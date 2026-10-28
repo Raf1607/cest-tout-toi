@@ -13,7 +13,7 @@ function shuffle(a) {
 }
 
 const ticId = (owner, t) => owner + '|' + (t.id || t.file || t.text);
-const FAMILY = { expr: 'mots', mot: 'mots', ponct: 'mots', emoji: 'emoji', sticker: 'media', gif: 'media', habitude: 'habitude' };
+const FAMILY = { expr: 'mots', mot: 'mots', ponct: 'mots', debut: 'mots', fin: 'mots', emoji: 'emoji', sticker: 'media', gif: 'media', habitude: 'habitude', message: 'message' };
 
 // Pour varier les questions, on alterne les familles de tics de chacun (mots, emoji, sticker/GIF,
 // habitude), en prenant à chaque fois le meilleur restant de la famille.
@@ -42,7 +42,7 @@ function buildDeck(owners, total, used, withPhotos, extra) {
   const queues = owners.map(a => {
     const fresh = a.tics.filter(t => !used.has(ticId(a.name, t)));
     let list = varied(fresh.length ? fresh : a.tics.slice());
-    list = [...shuffle(list.slice(0, 4)), ...shuffle(list.slice(4))];
+    list = [...shuffle(list.slice(0, 5)), ...shuffle(list.slice(5))];   // un tic de chaque famille en tête
     (extra.get(a.name) || []).forEach((tic, i) => list.splice(1 + 2 * i, 0, tic));
     if (withPhotos && a.photos?.length) {
       const photos = shuffle(a.photos.filter(f => !used.has(a.name + '|' + f)).slice());
@@ -166,6 +166,9 @@ export class Game {
     const pool = fresh.length ? fresh : this.records.slice();
     const chosen = [...shuffle(pool.filter(c => c.tic.kind === 'record')), ...shuffle(pool.filter(c => c.tic.kind !== 'record'))]
       .slice(0, Math.max(1, Math.round(this.settings.rounds / 4)));
+    // Et un message culte (celui qui a fait le plus réagir), si son auteur est dans la partie.
+    const cult = (this.analysis.cults || []).find(c => this.options.includes(c.author) && !this.used.has(c.author + '|culte:' + c.text));
+    if (cult) chosen.push({ owner: cult.author, tic: { kind: 'culte', id: 'culte:' + cult.text, text: cult.text, detail: cult.detail, uses: 0, others: 0 } });
     const extra = new Map();
     for (const c of chosen) extra.set(c.owner, [...(extra.get(c.owner) || []), c.tic]);
     const deckOwners = [...owners, ...[...extra.keys()].filter(n => !owners.some(a => a.name === n)).map(n => ({ ...this.member(n), tics: [] }))];
@@ -257,7 +260,7 @@ export class Game {
         name,
         tics: [
           ...this.records.filter(c => c.owner === name && c.tic.kind === 'record').map(c => c.tic.text),
-          ...this.member(name).tics.filter(t => !t.file).slice(0, 4).map(t => (t.kind === 'habitude' ? `plein de ${t.text}` : t.text)),
+          ...this.member(name).tics.filter(t => !t.file && t.kind !== 'message').slice(0, 4).map(t => (t.kind === 'habitude' ? `plein de ${t.text}` : t.kind === 'debut' ? `${t.text}…` : t.kind === 'fin' ? `…${t.text}` : t.text)),
         ],
       }));
     }

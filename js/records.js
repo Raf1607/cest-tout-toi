@@ -133,3 +133,27 @@ export function bestPhotos(chat, files, max = 10) {
   return photos.sort((a, b) => b.score - a.score).slice(0, max).map(({ file, author, emojis }) => ({ file, author, emojis }));
 }
 
+// Messages cultes : ceux qui ont fait le plus réagir le groupe (emojis et réponses des autres juste
+// après), à condition d'être montrables tels quels.
+export function cultMessages(chat, max = 5) {
+  const timeline = chat.timeline || [];
+  const out = [];
+  timeline.forEach((e, i) => {
+    if (!e.text || e.text.length < 15 || e.text.length > 160 || /\b(?:https?:\/\/|www\.)|\d{4,}|@/i.test(e.text)) return;
+    const counts = new Map();
+    let replies = 0;
+    for (let j = i + 1; j < timeline.length && j <= i + 10; j++) {
+      const r = timeline[j];
+      if (r.t - e.t > REACTION_WINDOW) break;
+      if (r.author === e.author) continue;
+      replies++;
+      for (const emoji of (r.text || '').match(EMOJI) || []) counts.set(emoji, (counts.get(emoji) || 0) + 1);
+    }
+    const reactions = [...counts.values()].reduce((a, b) => a + b, 0);
+    if (reactions < 3) return;
+    out.push({ author: e.author, text: e.text, reactions, emojis: [...counts].sort((a, b) => b[1] - a[1]).slice(0, 4), score: 2 * reactions + replies });
+  });
+  return out.sort((a, b) => b.score - a.score).slice(0, max)
+    .map(({ author, text, reactions, emojis }) => ({ author, text, detail: `${reactions} emojis en réaction juste après : ${emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')}.` }));
+}
+

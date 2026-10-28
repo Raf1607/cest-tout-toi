@@ -17,12 +17,12 @@
 // dans un export sans médias) et, dans un export avec médias, le sticker ou le GIF fétiche
 // de chacun (les fichiers identiques sont regroupés grâce à leur taille et leur CRC).
 
-import { memberStats, bestPhotos } from './records.js';
+import { memberStats, bestPhotos, cultMessages } from './records.js';
 
 const MAX_MESSAGES = 60000;   // au-delà, on ne garde que les plus récents
 const MIN_MESSAGES = 20;      // en dessous, un membre n'est pas analysé
 const MIN_USES = 3;
-const MAX_GRAM = 4;
+const MAX_GRAM = 5;
 const K = 30;
 const MAX_TICS = 12;
 // Du plus exigeant au plus souple ; lift : écart minimal, z : avance minimale sur le deuxième,
@@ -125,16 +125,37 @@ function grams(text, tokens, cb) {
     prev = t;
   }
   flush();
+
+  // Début et fin de message (« ^bon » : commence par « Bon… », « bisous$ » : finit par « …bisous »),
+  // en ignorant les emojis et la ponctuation qui suivent le dernier mot.
+  const joined = (i, j) => i >= 0 && j < tokens.length && tokens.slice(i, j + 1).every(t => t.kind === 'word')
+    && !tokens.slice(i + 1, j + 1).some((t, k) => BREAK_RE.test(text.slice(tokens[i + k].e, t.s)));
+  if (tokens[0]?.kind === 'word') {
+    for (let n = 1; n <= 2; n++) {
+      const words = tokens.slice(0, n).map(t => t.k);
+      if (joined(0, n - 1) && acceptable(words)) emit('^' + words.join(' '), tokens[0], tokens[n - 1]);
+    }
+  }
+  let last = tokens.length - 1;
+  while (last >= 0 && tokens[last].kind !== 'word') last--;
+  if (last >= 0 && tokens.length > 1) {
+    for (let n = 1; n <= 2; n++) {
+      const words = tokens.slice(last - n + 1, last + 1).map(t => t.k);
+      if (joined(last - n + 1, last) && acceptable(words)) emit(words.join(' ') + '$', tokens[last - n + 1], tokens[last]);
+    }
+  }
 }
 
-const kindOf = key => key.includes(' ') ? 'expr' : /^\p{Extended_Pictographic}$/u.test(key) ? 'emoji'
+const bare = key => key.replace(/^\^|\$$/g, '');
+
+const kindOf = key => key.startsWith('^') ? 'debut' : key.endsWith('$') ? 'fin' : key.includes(' ') ? 'expr' : /^\p{Extended_Pictographic}$/u.test(key) ? 'emoji'
   : /^[.?!]+$/.test(key) ? 'ponct' : 'mot';
 
 // Mots porteurs d'une tournure, réduits à leur squelette (« mdrrr » → « mdr », « ahahah » → « ah »).
 // Les clés des médias (#habitude, @fichier) ne se confondent avec rien.
 function contentWords(key) {
   if (/^[#@]/.test(key)) return [key];
-  return key.split(' ').filter(w => !STOP.has(w))
+  return bare(key).split(' ').filter(w => !STOP.has(w))
     .map(w => w.replace(/(.)\1+/gu, '$1').replace(/^(?:ah)+a?$/, 'ah').replace(/^(?:ha)+h?$/, 'ha'));
 }
 
@@ -164,6 +185,14 @@ function owned(c, totals, a, rule) {
 }
 
 const spreadOk = (spread, c) => spread >= Math.min(4, Math.max(2, Math.ceil(c * 0.3)));
+
+// Un message montrable tel quel : ni trop court ni trop long, sans lien, numéro ni prénom.
+const MAX_QUOTES = 3;
+function quotable(text, tokens, nameWords) {
+  if (text.length < 20 || text.length > 150 || /\b(?:https?:\/\/|www\.)|\d{4,}|@/i.test(text)) return false;
+  const words = tokens.filter(t => t.kind === 'word');
+  return words.length >= 4 && !words.some(t => nameWords.has(t.k));
+}
 
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -243,17 +272,21 @@ function analyzeAt(chat, files, level) {
 
   const known = new Set(KNOWN.split('|').map(s => tokenize(s.trim()).map(t => t.k).join(' ')));
   const candidates = names.map(() => []);
+  // Une expression de plusieurs mots est plus rare qu'un mot seul, et bien plus drôle : seuils
+  // un peu plus souples et bonus au classement.
+  const phraseRule = { lift: lift * 0.8, z: z * 0.8, share };
   for (const [key, st] of stats) {
-    const words = key.split(' ');
+    const words = bare(key).split(' ');
     if (words.some(w => nameWords.has(w))) continue;
     const kind = kindOf(key);
     for (let a = 0; a < A; a++) {
       const c = st.c[a];
       if (c < MIN_USES || perAuthor[a] < MIN_MESSAGES || !spreadOk(st.spread[a], c)) continue;
-      const own = owned(st.c, perAuthor, a, rule);
+      const own = owned(st.c, perAuthor, a, words.length > 1 ? phraseRule : rule);
       if (!own) continue;
-      let boost = known.has(key) ? 1.3 : 1;
-      if (kind === 'expr' && words.length <= 3) boost *= 1.2;
+      let boost = known.has(bare(key)) ? 1.3 : 1;
+      if (words.length > 1) boost *= 1.35;
+      if (kind === 'debut' || kind === 'fin') boost *= 1.25;
       if (kind === 'ponct') boost *= 0.7;
       candidates[a].push(candidate(key, kind, st.c, a, own, boost));
     }
@@ -316,7 +349,7 @@ function analyzeAt(chat, files, level) {
   // (« voilà » → « voilà voilà »), auquel cas elle le remplace.
   const picked = candidates.map(list => {
     list.sort((x, y) => y.score - x.score);
-    const out = [], limits = { emoji: 2, ponct: 1, sticker: 2, gif: 2, habitude: 2 };
+    const out = [], limits = { mot: 2, emoji: 2, ponct: 1, debut: 2, fin: 2, sticker: 2, gif: 2, habitude: 2 };
     for (const t of list) {
       if (out.length >= MAX_TICS) break;
       if (limits[t.kind] === 0) continue;
@@ -355,12 +388,49 @@ function analyzeAt(chat, files, level) {
     }
   }
 
+  // « Qui a écrit ça ? » : les messages les plus typiques de chacun, ceux qui accumulent plusieurs
+  // de ses tournures (comptées une fois par famille : « du coup » et « Du coup… » ne font qu'une).
+  const weights = candidates.map(list => new Map(list.filter(t => !/^[#@]/.test(t.key)).map(t => [t.key, Math.log2(Math.min(t.lift, 64))])));
+  const typical = names.map(() => []);
+  const seenText = new Set();
+  messages.forEach((m, i) => {
+    const a = index.get(m.author), w = weights[a];
+    if (!w.size || !quotable(m.text, tokenized[i], nameWords)) return;
+    const norm = tokenized[i].filter(t => t.kind === 'word').map(t => t.k).join(' ');   // sans emojis ni ponctuation
+    if (seenText.has(norm)) return;
+    seenText.add(norm);
+    const groups = new Map();   // famille → [poids, tournure]
+    grams(m.text, tokenized[i], key => {
+      if (!w.has(key)) return;
+      const g = contentWords(key).join(' ');
+      if (!groups.has(g) || groups.get(g)[0] < w.get(key)) groups.set(g, [w.get(key), bare(key)]);
+    });
+    if (groups.size < 2) return;
+    const score = [...groups.values()].reduce((x, [v]) => x + v, 0) + Math.random();
+    typical[a].push({ text: m.text, score, groups: [...groups.keys()].sort().join('|'), found: [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
+  });
+  typical.forEach((list, a) => {
+    list.sort((x, y) => y.score - x.score);
+    const kept = [];
+    for (const t of list) {
+      if (kept.length >= MAX_QUOTES) break;
+      if (kept.some(k => k.groups === t.groups)) continue;   // deux fois les mêmes tournures : on varie
+      kept.push(t);
+    }
+    for (const t of kept) {
+      picked[a].push({
+        key: '=' + t.text, kind: 'message', text: t.text, uses: 0, others: 0, topOther: null, lift: 0,
+        detail: `Typique de ${names[a]} : ${t.found.slice(0, 3).map(k => `« ${k} »`).join(', ')}.`,
+      });
+    }
+  });
+
   const authors = names
     .map((name, a) => ({
       name,
       messages: perAll[a],
-      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null }) =>
-        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of })),
+      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null, detail = null }) =>
+        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of, detail })),
       photos: shuffle(photos[a]).slice(0, 40),
       photoCount: photos[a].length,
       stats: records.get(name) || null,
@@ -368,5 +438,5 @@ function analyzeAt(chat, files, level) {
     .sort((x, y) => y.messages - x.messages);
 
   const slideshow = files.size ? bestPhotos(chat, files) : [];
-  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors, slideshow };
+  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors, slideshow, cults: cultMessages(chat) };
 }

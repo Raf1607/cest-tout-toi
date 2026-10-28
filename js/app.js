@@ -230,7 +230,7 @@ function homeScreen() {
     </section>
     <section class="card">
       <h2>Créer une partie</h2>
-      <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que les expressions à deviner, avec un message d'exemple.</p>
+      <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que ce qu'il faut deviner (expressions, quelques vrais messages, stickers…).</p>
       <label class="button primary file">Importer la discussion<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <details>
         <summary>Comment exporter la discussion&nbsp;?</summary>
@@ -315,6 +315,8 @@ const ASK = {
   expr: 'Qui dit tout le temps…', mot: 'Qui dit tout le temps…', emoji: 'Qui envoie tout le temps…', ponct: 'Qui écrit tout le temps…',
   sticker: 'Qui envoie tout le temps ce sticker ?', gif: 'Qui envoie tout le temps ce GIF ?', photo: 'Qui a envoyé cette photo ?',
   habitude: 'Qui envoie le plus…', record: 'Qui…', favori: 'Qui a cet emoji préféré ?',
+  debut: 'Qui commence souvent ses messages par…', fin: 'Qui finit souvent ses messages par…',
+  message: 'Qui a écrit ça ?', culte: 'Qui a écrit ce message culte ?',
 };
 
 function bubble(r) {
@@ -328,6 +330,9 @@ function bubble(r) {
   if (r.kind === 'habitude') return `<div class="bubble habitude">de ${esc(r.text)}&nbsp;?</div>`;
   if (r.kind === 'record') return `<div class="bubble record">${esc(r.text)}&nbsp;?</div>`;
   if (r.kind === 'favori') return `<div class="bubble emoji">${esc(r.text)}</div>`;
+  if (r.kind === 'message' || r.kind === 'culte') return `<div class="bubble message">${esc(r.text)}</div>`;
+  if (r.kind === 'debut') return `<div class="bubble expr">«&nbsp;${esc(r.text)}…&nbsp;»</div>`;
+  if (r.kind === 'fin') return `<div class="bubble expr">«&nbsp;…${esc(r.text)}&nbsp;»</div>`;
   return `<div class="bubble ${r.kind}">${r.kind === 'expr' || r.kind === 'mot' ? `«&nbsp;${esc(r.text)}&nbsp;»` : esc(r.text)}</div>`;
 }
 
