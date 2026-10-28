@@ -6,12 +6,12 @@ Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son t
 
 ## Lancer une partie
 
-1. **Exporter la discussion** (une fois par partie, sur le téléphone de l'hôte) : dans WhatsApp, ouvrir le groupe, toucher son nom en haut, *Exporter la discussion* › *Sans médias* › *Enregistrer dans Fichiers*. Sur Android : menu ⋮ › *Plus* › *Exporter la discussion*.
+1. **Exporter la discussion** (sur le téléphone de l'hôte) : dans WhatsApp, ouvrir le groupe, toucher son nom en haut, *Exporter la discussion* › *Joindre les médias* (ou *Sans médias*) › *Enregistrer dans Fichiers*. Sur Android : menu ⋮ › *Plus* › *Exporter la discussion*. Avec les médias, le jeu montre en plus les stickers et GIF fétiches de chacun ; le fichier est plus gros et WhatsApp n'y garde que les messages les plus récents.
 2. **Créer la partie** : ouvrir le lien du jeu, toucher *Importer la discussion* et choisir le fichier exporté. Le téléphone affiche un code de 4 lettres et un QR code. Astuce iPhone : Partager › *Sur l'écran d'accueil* pour avoir le jeu comme une appli.
 3. **Faire entrer les autres** : ils scannent le QR code (ou tapent le code), en Wi-Fi ou en 4G, et choisissent qui ils sont dans la discussion.
 4. **Lancer** : l'hôte règle le nombre de manches et le temps de vote, puis touche *Lancer la partie*. Le bouton s'active quand chaque joueur a choisi son nom ; pas besoin que tous les membres du groupe soient là (l'option *Inclure les membres absents* les ajoute quand même au jeu).
 
-À chaque manche, une expression s'affiche sur tous les téléphones : chacun vote pour celui ou celle qui la dit tout le temps. On voit en direct qui vote pour qui, et on peut changer d'avis jusqu'à la fin ; quand tout le monde a voté, il reste 5 secondes. 1 point par bonne réponse. L'hôte passe à la manche suivante quand le groupe est prêt.
+À chaque manche, une expression, un emoji, un sticker, un GIF ou une habitude (« qui envoie le plus de vocaux ? ») s'affiche sur tous les téléphones : chacun vote pour celui ou celle qui la dit tout le temps. On voit en direct qui vote pour qui, et on peut changer d'avis jusqu'à la fin ; quand tout le monde a voté, il reste 5 secondes. 1 point par bonne réponse. L'hôte passe à la manche suivante quand le groupe est prêt.
 
 **Pendant la partie, l'hôte garde la page ouverte et l'écran allumé** (sur iPhone, mettre le verrouillage automatique sur *Jamais* par sécurité) : si sa page se ferme, la partie s'arrête. Les autres peuvent recharger la page, ils reviennent avec leur nom et leur score.
 
@@ -19,6 +19,7 @@ Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son t
 
 - **Aucun serveur de jeu.** Le téléphone de l'hôte tient la partie ; les autres s'y connectent en pair-à-pair (WebRTC, via [PeerJS](https://peerjs.com) et son serveur public de mise en relation, qui ne voit pas le contenu des échanges).
 - **La discussion ne quitte pas le téléphone de l'hôte.** Elle est lue et analysée dans la page, sans être envoyée nulle part ni conservée. Les invités ne reçoivent que la liste des membres, l'expression de la manche, puis à la révélation un message d'exemple et les chiffres.
+- **Médias** : les habitudes viennent des mentions « autocollant omis », « GIF retiré »… (iPhone ; Android n'indique que « médias »). Dans un export avec médias, le même sticker envoyé plusieurs fois est reconnu à sa taille et son CRC (lus dans le sommaire du zip, sans tout décompresser) ; l'image de la manche part vers les autres téléphones en petits morceaux. Les questions sur les photos sont une option de l'hôte, désactivée par défaut : n'importe quelle photo du groupe peut alors s'afficher.
 - **Aucune vraie discussion dans ce dépôt.** `samples/` ne contient que des discussions inventées, et le `.gitignore` refuse tout autre fichier `.txt` ou `.zip`.
 - **Détection des tics** (`js/tics.js`) : pour chaque membre, les tournures de 1 à 4 mots, emojis et ponctuations qu'il emploie souvent et au moins 2,5 fois plus que chacun des autres (avec un test statistique pour écarter le hasard). Sont écartées : les tournures limitées à une seule conversation (un sujet, pas un tic), les prénoms et noms propres, les fragments redondants (« du coup » / « coup je suis »).
 
@@ -56,6 +57,7 @@ node tools/make-sample.mjs                                     # régénère sam
 | `js/tics.js` | détection des tics |
 | `js/game.js` | règles et déroulé de la partie (côté hôte) |
 | `js/net.js` | connexions pair-à-pair |
+| `js/media.js` | lecture du zip, préparation et envoi des images |
 | `js/app.js` | écrans |
 | `serve.py` | serveur local pour tester |
 | `tools/` | partie simulée, analyse d'un export, génération des exemples |

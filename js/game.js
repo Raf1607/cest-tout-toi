@@ -10,13 +10,43 @@ function shuffle(a) {
   return a;
 }
 
+const ticId = (owner, t) => owner + '|' + (t.file || t.text);
+const FAMILY = { expr: 'mots', mot: 'mots', ponct: 'mots', emoji: 'emoji', sticker: 'media', gif: 'media', habitude: 'habitude' };
+
+// Pour varier les questions, on alterne les familles de tics de chacun (mots, emoji, sticker/GIF,
+// habitude), en prenant à chaque fois le meilleur restant de la famille.
+function varied(tics) {
+  const families = new Map();
+  for (const t of tics) {
+    const f = FAMILY[t.kind] || 'mots';
+    if (!families.has(f)) families.set(f, []);
+    families.get(f).push(t);
+  }
+  const out = [];
+  while (families.size) {
+    for (const [f, list] of families) {
+      out.push(list.shift());
+      if (!list.length) families.delete(f);
+    }
+  }
+  return out;
+}
+
 // Les manches tournent entre les membres (chacun autant que possible, jamais deux fois de suite),
 // en piochant d'abord dans leurs meilleurs tics, et en évitant ceux déjà joués lors des parties précédentes.
-function buildDeck(owners, total, used) {
+// Avec l'option photos, chacun a aussi une ou deux questions « qui a envoyé cette photo ? ».
+function buildDeck(owners, total, used, withPhotos) {
   const queues = owners.map(a => {
-    const fresh = a.tics.filter(t => !used.has(a.name + '|' + t.text));
-    const list = fresh.length ? fresh : a.tics.slice();
-    return { owner: a.name, list: [...shuffle(list.slice(0, 4)), ...shuffle(list.slice(4))] };
+    const fresh = a.tics.filter(t => !used.has(ticId(a.name, t)));
+    let list = varied(fresh.length ? fresh : a.tics.slice());
+    list = [...shuffle(list.slice(0, 4)), ...shuffle(list.slice(4))];
+    if (withPhotos && a.photos?.length) {
+      const photos = shuffle(a.photos.filter(f => !used.has(a.name + '|' + f)).slice());
+      const card = file => ({ kind: 'photo', text: 'cette photo', file, uses: a.photoCount || a.photos.length, others: 0, topOther: null, example: null });
+      if (photos[0]) list.splice(1 + Math.floor(Math.random() * 3), 0, card(photos[0]));
+      if (photos[1]) list.splice(6 + Math.floor(Math.random() * 3), 0, card(photos[1]));
+    }
+    return { owner: a.name, list };
   });
   const deck = [];
   let last = null;
@@ -33,13 +63,19 @@ function buildDeck(owners, total, used) {
   return deck;
 }
 
+// Image ou vidéo à montrer pour un tic (sticker, GIF, photo) ; id = nom du fichier dans l'export.
+export function mediaOf(tic) {
+  if (!tic.file) return null;
+  return { id: tic.file, type: /\.(mp4|mov|3gp)$/i.test(tic.file) ? 'video' : 'image' };
+}
+
 export class Game {
   constructor(analysis, code, hostId, onChange) {
     this.analysis = analysis;
     this.code = code;
     this.hostId = hostId;
     this.players = new Map();       // id → { id, author, score, connected, order }
-    this.settings = { rounds: 10, seconds: 25, absent: false };
+    this.settings = { rounds: 10, seconds: 25, absent: false, photos: false };
     this.phase = 'lobby';
     this.used = new Set();
     this.deck = [];
@@ -87,6 +123,7 @@ export class Game {
       if (ROUNDS.includes(s.rounds)) this.settings.rounds = s.rounds;
       if (SECONDS.includes(s.seconds)) this.settings.seconds = s.seconds;
       if (typeof s.absent === 'boolean') this.settings.absent = s.absent;
+      if (typeof s.photos === 'boolean') this.settings.photos = s.photos;
     } else if (msg.t === 'start' && host && this.phase === 'lobby') {
       if (this.canStart().ok) return this.start();
     } else if (msg.t === 'next' && host && this.phase === 'reveal') {
@@ -115,7 +152,7 @@ export class Game {
   start() {
     this.options = this.candidates();
     const owners = this.options.map(n => this.member(n)).filter(a => a.tics.length);
-    this.deck = buildDeck(owners, this.settings.rounds, this.used);
+    this.deck = buildDeck(owners, this.settings.rounds, this.used, this.settings.photos);
     for (const p of this.players.values()) p.score = 0;
     this.index = 0;
     this.ask();
@@ -123,7 +160,7 @@ export class Game {
 
   ask() {
     const card = this.deck[this.index];
-    this.used.add(card.owner + '|' + card.tic.text);
+    this.used.add(ticId(card.owner, card.tic));
     const ms = this.settings.seconds * 1000;
     this.round = { n: this.index + 1, card, votes: {}, endsAt: Date.now() + ms };
     this.phase = 'question';
@@ -176,11 +213,12 @@ export class Game {
     if (this.phase === 'lobby') {
       v.members = this.analysis.authors.map(a => ({ name: a.name, messages: a.messages, tics: a.tics.length }));
       v.absentCount = this.analysis.authors.filter(a => a.tics.length && !players.some(p => p.author === a.name)).length;
+      v.photoCount = this.analysis.authors.reduce((n, a) => n + (a.photos?.length || 0), 0);
       v.canStart = this.canStart();
     }
     if (this.phase === 'question' || this.phase === 'reveal') {
       const { n, card, votes, endsAt } = this.round;
-      v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, options: this.options };
+      v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, of: card.tic.of || null, media: mediaOf(card.tic), options: this.options };
       if (this.phase === 'question') {
         Object.assign(v.round, { remaining: Math.max(0, endsAt - Date.now()), seconds: this.settings.seconds, votes, allVoted: !!this.round.allVoted });
       } else {
@@ -189,7 +227,10 @@ export class Game {
       }
     }
     if (this.phase === 'end') {
-      v.portraits = this.options.map(name => ({ name, tics: this.member(name).tics.slice(0, 3).map(t => t.text) }));
+      v.portraits = this.options.map(name => ({
+        name,
+        tics: this.member(name).tics.filter(t => !t.file).slice(0, 4).map(t => (t.kind === 'habitude' ? `plein de ${t.text}` : t.text)),
+      }));
     }
     return v;
   }

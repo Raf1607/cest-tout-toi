@@ -10,6 +10,10 @@
 // On exige un écart d'au moins 2,5 qui ne soit pas dû au hasard (test de deux proportions),
 // et on écarte les tournures concentrées sur une seule conversation (un sujet, pas un tic),
 // les prénoms et les noms propres.
+//
+// Les médias suivent la même règle : « qui envoie le plus de stickers » (habitudes, même
+// dans un export sans médias) et, dans un export avec médias, le sticker ou le GIF fétiche
+// de chacun (les fichiers identiques sont regroupés grâce à leur taille et leur CRC).
 
 const MAX_MESSAGES = 60000;   // au-delà, on ne garde que les plus récents
 const MIN_MESSAGES = 20;      // en dessous, un membre n'est pas analysé
@@ -19,7 +23,10 @@ const K = 30;
 const MIN_LIFT = 2.5;
 const MIN_SHARE = 0.34;
 const MIN_Z = 2.5;
-const MAX_TICS = 10;
+const MAX_TICS = 12;
+const MIN_LIFT_HABIT = 1.6;            // « qui envoie le plus de… » : être nettement en tête suffit
+const MAX_MEDIA_BYTES = 3 * 1024 * 1024; // un sticker ou un GIF plus lourd ne sera pas envoyé aux joueurs
+const HABITS = { sticker: 'stickers', gif: 'GIF', photo: 'photos', video: 'vidéos', vocal: 'vocaux', media: 'médias' };
 
 const STOP = new Set(`a à ai aie as au aux avait avais avez avoir avons ça ce ceci cela celle celui ces cet cette chez ci
   comme d dans de des du elle elles en es est et étais était été être eu eux fait faire il ils j je l la le les leur leurs
@@ -117,7 +124,9 @@ const kindOf = key => key.includes(' ') ? 'expr' : /^\p{Extended_Pictographic}$/
   : /^[.?!]+$/.test(key) ? 'ponct' : 'mot';
 
 // Mots porteurs d'une tournure, réduits à leur squelette (« mdrrr » → « mdr », « ahahah » → « ah »).
+// Les clés des médias (#habitude, @fichier) ne se confondent avec rien.
 function contentWords(key) {
+  if (/^[#@]/.test(key)) return [key];
   return key.split(' ').filter(w => !STOP.has(w))
     .map(w => w.replace(/(.)\1+/gu, '$1').replace(/^(?:ah)+a?$/, 'ah').replace(/^(?:ha)+h?$/, 'ha'));
 }
@@ -129,24 +138,46 @@ function zScore(c1, n1, c2, n2) {
   return se ? (c1 / n1 - c2 / n2) / se : 0;
 }
 
+// Le membre a s'approprie-t-il cette tournure ? c : utilisations par membre, totals : messages par membre.
+function owned(c, totals, a, minLift) {
+  let C = 0, M = 0;
+  for (let b = 0; b < c.length; b++) { C += c[b]; M += totals[b]; }
+  const p = C / M;
+  const rate = b => (c[b] + K * p) / (totals[b] + K);
+  let best = 0, top = -1;
+  for (let b = 0; b < c.length; b++) if (b !== a && totals[b] >= MIN_MESSAGES && rate(b) > best) { best = rate(b); top = b; }
+  const lift = best ? rate(a) / best : Infinity;
+  if (lift < minLift || c[a] / C < MIN_SHARE) return null;
+  if (top >= 0 && zScore(c[a], totals[a], c[top], totals[top]) < MIN_Z) return null;   // écart dû au hasard
+  let other = -1;
+  for (let b = 0; b < c.length; b++) if (b !== a && c[b] && (other < 0 || c[b] > c[other])) other = b;
+  return { lift: Math.min(lift, 99), others: C - c[a], other };
+}
+
+const spreadOk = (spread, c) => spread >= Math.min(4, Math.max(2, Math.ceil(c * 0.3)));
+
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
 
-export function analyze(chat) {
+// files (export avec médias) : nom de fichier → { key, size }, où key identifie le contenu.
+export function analyze(chat, files = new Map()) {
   const messages = chat.messages.slice(-MAX_MESSAGES);
-  const names = [...new Set(messages.map(m => m.author))];
+  const medias = chat.medias || [];
+  const names = [...new Set([...messages, ...medias].map(m => m.author))];
   const index = new Map(names.map((n, i) => [n, i]));
   const A = names.length;
-  const perAuthor = new Int32Array(A);
+  const perAuthor = new Int32Array(A);           // messages écrits
   for (const m of messages) perAuthor[index.get(m.author)]++;
+  const perAll = Int32Array.from(perAuthor);     // messages écrits + médias
+  for (const m of medias) perAll[index.get(m.author)]++;
   const M = messages.length;
 
   // Une tournure doit revenir dans plusieurs conversations : on compte les jours distincts,
   // ou des tranches de la discussion si elle tient en quelques jours.
   const days = new Map();
-  for (const m of messages) if (!days.has(m.day)) days.set(m.day, days.size);
+  for (const m of [...messages, ...medias]) if (!days.has(m.day)) days.set(m.day, days.size);
   const chunk = Math.ceil(M / 20);
   const spreadKey = days.size >= 8 ? i => days.get(messages[i].day) : i => Math.floor(i / chunk);
 
@@ -177,34 +208,78 @@ export function analyze(chat) {
   });
 
   // Noms propres : des mots écrits avec une Majuscule en milieu de phrase.
-  for (const [key, st] of stats) if (!key.includes(' ') && st.mid >= 3 && st.cap / st.mid > 0.6) nameWords.add(key);
+  // (On exige que ces milieux de phrase soient fréquents : « ok ok Bref. » ne fait pas de « bref » un prénom.)
+  for (const [key, st] of stats) {
+    if (key.includes(' ') || st.mid < 3 || st.cap / st.mid <= 0.6) continue;
+    if (st.mid >= 0.3 * st.c.reduce((x, y) => x + y, 0)) nameWords.add(key);
+  }
 
   const known = new Set(KNOWN.split('|').map(s => tokenize(s.trim()).map(t => t.k).join(' ')));
   const candidates = names.map(() => []);
   for (const [key, st] of stats) {
     const words = key.split(' ');
     if (words.some(w => nameWords.has(w))) continue;
-    let C = 0;
-    for (let a = 0; a < A; a++) C += st.c[a];
-    const p = C / M;
-    const rate = a => (st.c[a] + K * p) / (perAuthor[a] + K);
     const kind = kindOf(key);
     for (let a = 0; a < A; a++) {
       const c = st.c[a];
-      if (c < MIN_USES || perAuthor[a] < MIN_MESSAGES) continue;
-      if (st.spread[a] < Math.min(4, Math.max(2, Math.ceil(c * 0.3)))) continue;
-      let best = 0, top = -1;
-      for (let b = 0; b < A; b++) if (b !== a && perAuthor[b] >= MIN_MESSAGES && rate(b) > best) { best = rate(b); top = b; }
-      const lift = best ? rate(a) / best : Infinity;
-      if (lift < MIN_LIFT || c / C < MIN_SHARE) continue;
-      if (top >= 0 && zScore(c, perAuthor[a], st.c[top], perAuthor[top]) < MIN_Z) continue;   // écart dû au hasard
+      if (c < MIN_USES || perAuthor[a] < MIN_MESSAGES || !spreadOk(st.spread[a], c)) continue;
+      const own = owned(st.c, perAuthor, a, MIN_LIFT);
+      if (!own) continue;
       let boost = known.has(key) ? 1.3 : 1;
       if (kind === 'expr' && words.length <= 3) boost *= 1.2;
-      if (kind === 'emoji') boost *= 0.9;
       if (kind === 'ponct') boost *= 0.7;
-      let topOther = null;
-      for (let b = 0; b < A; b++) if (b !== a && st.c[b] && (!topOther || st.c[b] > topOther.uses)) topOther = { name: names[b], uses: st.c[b] };
-      candidates[a].push({ key, kind, uses: c, others: C - c, topOther, lift: Math.min(lift, 99), score: Math.log2(Math.min(lift, 64)) * Math.log2(1 + c) * boost });
+      candidates[a].push(candidate(key, kind, st.c, a, own, boost));
+    }
+  }
+
+  function candidate(key, kind, c, a, own, boost = 1) {
+    return {
+      key, kind, uses: c[a], others: own.others, lift: own.lift,
+      topOther: own.other >= 0 ? { name: names[own.other], uses: c[own.other] } : null,
+      score: Math.log2(Math.min(own.lift, 64)) * Math.log2(1 + c[a]) * boost,
+    };
+  }
+
+  // Médias. Habitudes : qui envoie le plus de stickers, de GIF, de vocaux…
+  const mediaDay = m => days.get(m.day) ?? -1;
+  const byKind = new Map();
+  for (const m of medias) {
+    if (!HABITS[m.kind]) continue;
+    if (!byKind.has(m.kind)) byKind.set(m.kind, { c: new Int32Array(A), spread: new Int32Array(A), last: new Int32Array(A).fill(-2) });
+    const st = byKind.get(m.kind), a = index.get(m.author), d = mediaDay(m);
+    st.c[a]++;
+    if (st.last[a] !== d) { st.spread[a]++; st.last[a] = d; }
+  }
+  for (const [kind, st] of byKind) {
+    for (let a = 0; a < A; a++) {
+      if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
+      const own = owned(st.c, perAll, a, MIN_LIFT_HABIT);
+      if (own) candidates[a].push({ ...candidate('#' + kind, 'habitude', st.c, a, own), text: HABITS[kind], of: kind });
+    }
+  }
+
+  // Sticker et GIF fétiches (export avec médias) : le même fichier envoyé encore et encore.
+  const signatures = new Map();
+  const photos = names.map(() => []);
+  for (const m of medias) {
+    const f = m.file && files.get(m.file);
+    if (!f) continue;
+    const a = index.get(m.author);
+    if (m.kind === 'photo') { photos[a].push(m.file); continue; }
+    if (m.kind !== 'sticker' && m.kind !== 'gif') continue;
+    const key = '@' + m.kind + ':' + f.key;
+    if (!signatures.has(key)) signatures.set(key, { kind: m.kind, c: new Int32Array(A), spread: new Int32Array(A), last: new Int32Array(A).fill(-2), file: null });
+    const st = signatures.get(key), d = mediaDay(m);
+    st.c[a]++;
+    if (st.last[a] !== d) { st.spread[a]++; st.last[a] = d; }
+    if (f.size <= MAX_MEDIA_BYTES) st.file = m.file;
+  }
+  for (const [key, st] of signatures) {
+    if (!st.file) continue;
+    for (let a = 0; a < A; a++) {
+      if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
+      const own = owned(st.c, perAll, a, MIN_LIFT);
+      if (own) candidates[a].push({ ...candidate(key, st.kind, st.c, a, own, 1.3), text: st.kind === 'gif' ? 'ce GIF' : 'ce sticker', file: st.file });
     }
   }
 
@@ -214,7 +289,7 @@ export function analyze(chat) {
   // (« voilà » → « voilà voilà »), auquel cas elle le remplace.
   const picked = candidates.map(list => {
     list.sort((x, y) => y.score - x.score);
-    const out = [], limits = { emoji: 2, ponct: 1 };
+    const out = [], limits = { emoji: 2, ponct: 1, sticker: 2, gif: 2, habitude: 2 };
     for (const t of list) {
       if (out.length >= MAX_TICS) break;
       if (limits[t.kind] === 0) continue;
@@ -232,7 +307,7 @@ export function analyze(chat) {
   });
 
   // 3e passage : forme la plus courante telle qu'écrite, et un message d'exemple.
-  const wanted = picked.map(list => new Map(list.map(t => [t.key, { t, forms: new Map(), examples: [] }])));
+  const wanted = picked.map(list => new Map(list.filter(t => !/^[#@]/.test(t.key)).map(t => [t.key, { t, forms: new Map(), examples: [] }])));
   messages.forEach((m, i) => {
     const w = wanted[index.get(m.author)];
     if (!w.size) return;
@@ -256,12 +331,14 @@ export function analyze(chat) {
   const authors = names
     .map((name, a) => ({
       name,
-      messages: perAuthor[a],
-      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example }) =>
-        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example })),
+      messages: perAll[a],
+      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null }) =>
+        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of })),
+      photos: shuffle(photos[a]).slice(0, 40),
+      photoCount: photos[a].length,
     }))
     .filter(a => a.messages >= MIN_MESSAGES)
     .sort((x, y) => y.messages - x.messages);
 
-  return { title: chat.title, messageCount: M, authors };
+  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, authors };
 }

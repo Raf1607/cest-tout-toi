@@ -2,9 +2,11 @@
 //   node tools/test-game.mjs
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { parseChat } from '../js/whatsapp.js';
 import { analyze } from '../js/tics.js';
 import { Game } from '../js/game.js';
+import { readZipExport } from './zip-export.mjs';
 
 const name = 'Discussion WhatsApp avec Les Potes.txt';
 const analysis = analyze(parseChat(readFileSync(new URL('../samples/' + name, import.meta.url), 'utf8'), name));
@@ -67,4 +69,23 @@ await new Promise(r => setTimeout(r, 5500));
 assert.equal(game.phase, 'reveal');
 assert.equal(game.round.votes.b, 'Karim B', 'le changement de dernière seconde est pris en compte');
 clearTimeout(game.timer);
-console.log('OK —', owners.join(' › '));
+
+// Export avec médias : stickers, GIF, habitudes et (en option) photos dans les manches.
+const zipName = 'WhatsApp Chat - Les Potes (avec médias).zip';
+const exp = readZipExport(fileURLToPath(new URL('../samples/' + zipName, import.meta.url)));
+const media = new Game(analyze(parseChat(exp.text, zipName), exp.files), 'MEDI', 'h', () => {});
+['h', 'b', 'c', 'd'].forEach(id => media.join(id));
+['Julie Moreau', 'Karim B', 'Inès', 'Thomas Lefèvre'].forEach((name, i) => media.handle('hbcd'[i], { t: 'claim', author: name }));
+media.handle('h', { t: 'settings', settings: { rounds: 20, photos: true } });
+media.handle('h', { t: 'start' });
+const kinds = new Set(media.deck.map(c => c.tic.kind));
+for (const k of ['sticker', 'gif', 'habitude', 'photo', 'emoji']) assert.ok(kinds.has(k), `une manche de type ${k}`);
+for (let i = 0; i < media.deck.length; i++) {
+  const q = media.view('b').round;
+  assert.equal(q.answer, undefined);
+  if (['sticker', 'gif', 'photo'].includes(q.kind)) assert.ok(q.media?.id && exp.files.has(q.media.id), 'le média de la manche existe dans l\'export');
+  media.reveal();
+  media.next();
+}
+assert.equal(media.phase, 'end');
+console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

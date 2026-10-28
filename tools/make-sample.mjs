@@ -1,6 +1,12 @@
-// Génère une discussion WhatsApp factice (5 amis, chacun avec ses tics) dans samples/.
+// Génère des discussions WhatsApp factices (5 amis, chacun avec ses tics, ses stickers et ses GIF)
+// dans samples/ : export Android et iPhone sans médias, et export iPhone avec médias (.zip).
 //   node tools/make-sample.mjs
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { deflateSync } from 'node:zlib';
 
 let seed = 42;
 const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -44,7 +50,18 @@ const cap = s => s[0].toUpperCase() + s.slice(1);
 const totalW = PEOPLE.reduce((s, p) => s + p.w, 0);
 const who = () => { let r = rnd() * totalW; for (const p of PEOPLE) if ((r -= p.w) < 0) return p; return PEOPLE[0]; };
 
-const lines = [];   // {d, h, m, author, text, system}
+// Médias : chacun ses habitudes et ses stickers ou GIF fétiches.
+const MEDIA = {
+  'Julie Moreau': { gif: 0.10, photo: 0.03, favGif: [1, 1, 1, 2] },
+  'Karim B': { sticker: 0.18, favSticker: [1, 1, 1, 2, 2] },
+  'Inès': { sticker: 0.06, vocal: 0.03, favSticker: [3, 3, 3] },
+  'Thomas Lefèvre': { vocal: 0.12, photo: 0.05 },
+  'Max': { photo: 0.06, gif: 0.03 },
+};
+const SHARED_STICKERS = [8, 9];   // stickers que tout le monde envoie de temps en temps
+const SHARED_GIFS = [8];
+
+const lines = [];   // {day, minute, author, text} ou {day, minute, author, media: {kind, id}}
 let day = new Date(2026, 4, 1);
 for (let d = 0; d < 130; d++) {
   day = new Date(day.getTime() + 86400000);
@@ -57,7 +74,14 @@ for (let d = 0; d < 130; d++) {
     for (const t of p.tics) s = t(s);
     if (chance(0.5)) s = cap(s);
     lines.push({ day, minute, author: p.name, text: s });
-    if (chance(0.03)) lines.push({ day, minute, author: p.name, text: 'MEDIA' });
+    const m = MEDIA[p.name];
+    for (const kind of ['sticker', 'gif', 'vocal', 'photo']) {
+      if (!chance(m[kind] || 0.015)) continue;
+      const fav = kind === 'sticker' ? m.favSticker : kind === 'gif' ? m.favGif : null;
+      const shared = kind === 'sticker' ? SHARED_STICKERS : SHARED_GIFS;
+      const id = kind === 'photo' || kind === 'vocal' ? null : fav && chance(0.8) ? pick(fav) : pick(shared);
+      lines.push({ day, minute, author: p.name, media: { kind, id } });
+    }
     if (chance(0.01)) lines.push({ day, minute, author: p.name, text: 'DELETED' });
   }
   if (d === 40) for (let i = 0; i < 8; i++) {   // une conversation sur un sujet : ne doit pas ressortir comme tic
@@ -68,22 +92,73 @@ for (let d = 0; d < 130; d++) {
   if (d === 12) lines.push({ day, minute: minute + 5, author: 'Max', text: 'Bon je résume pour samedi :\n- Julie les courses\n- Karim la voiture\n- moi le reste' });
 }
 
+// Petites images PNG (sans dépendance) : un visage par sticker, un dégradé par photo.
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = buf => { let c = 0xffffffff; for (const b of buf) c = CRC[(c ^ b) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function png(w, h, px) {
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw.set(px(x, y), y * (w * 4 + 1) + 1 + x * 4);
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr.set([8, 6, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+const HUES = [[0, 0, 0], [255, 196, 0], [255, 99, 71], [80, 200, 120], [70, 150, 255], [200, 120, 255], [255, 140, 200], [140, 90, 60], [160, 160, 160], [0, 190, 200]];
+function face(id, anim = false) {
+  const [r, g, b] = HUES[id % HUES.length];
+  return png(128, 128, (x, y) => {
+    const dx = x - 64, dy = y - 64, d = Math.hypot(dx, dy);
+    if (d > 58) return [0, 0, 0, 0];
+    if (Math.hypot(x - 44, y - 50) < 9 || Math.hypot(x - 84, y - 50) < 9) return [20, 20, 30, 255];
+    const smile = id % 3 === 0 ? Math.abs(dy - 22) < 4 && Math.abs(dx) < 26 : id % 3 === 1 ? Math.abs(d - 34) < 4 && dy > 12 : Math.hypot(dx, dy - 26) < 10;
+    if (smile) return [20, 20, 30, 255];
+    return anim ? [255 - r, 255 - g, 255 - b, 255] : [r, g, b, 255];
+  });
+}
+const photo = seed => png(240, 180, (x, y) => [(x + seed * 37) % 256, (y * 2 + seed * 91) % 256, (seed * 53) % 256, 255]);
+
 const pad = n => String(n).padStart(2, '0');
 const date = d => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 const time = (m, sec) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}${sec ? ':' + pad(Math.floor(rnd() * 60)) : ''}`;
+const stamp = (d, m) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(Math.floor(m / 60) % 24)}-${pad(m % 60)}-00`;
 
+const OMITTED_IOS = { sticker: 'autocollant omis', gif: 'GIF retiré', vocal: 'audio omis', photo: 'image absente' };
+const TYPE = { sticker: ['STICKER', 'webp'], gif: ['GIF', 'gif'], vocal: ['AUDIO', 'opus'], photo: ['PHOTO', 'jpg'] };
 const android = ['01/05/2026 10:00 - Les messages et les appels sont chiffrés de bout en bout. Personne en dehors de cette discussion ne peut les lire ou les écouter.',
   '01/05/2026 10:00 - Julie Moreau a créé le groupe « Les Potes »'];
-const ios = ['[01/05/2026 10:00:00] Les Potes: ‎Les messages et les appels sont chiffrés de bout en bout.',
+const head = ['[01/05/2026 10:00:00] Les Potes: ‎Les messages et les appels sont chiffrés de bout en bout.',
   '[01/05/2026 10:00:00] Julie Moreau: ‎Julie Moreau a créé ce groupe'];
+const ios = [...head], iosMedia = [...head];
+const dir = mkdtempSync(join(tmpdir(), 'ctt-'));
+let seq = 0;
 for (const l of lines) {
-  const a = { MEDIA: '<Médias omis>', DELETED: 'Ce message a été supprimé' }[l.text] ?? l.text;
-  const i = { MEDIA: '‎image absente', DELETED: '‎Ce message a été supprimé.' }[l.text] ?? l.text;
+  const t = time(l.minute, true);
+  if (l.media) {
+    const { kind, id } = l.media;
+    const file = `${String(++seq).padStart(8, '0')}-${TYPE[kind][0]}-${stamp(l.day, l.minute)}.${TYPE[kind][1]}`;
+    writeFileSync(join(dir, file), kind === 'sticker' ? face(id) : kind === 'gif' ? face(id + 3, true) : kind === 'photo' ? photo(seq) : Buffer.from(`vocal ${seq}`));
+    android.push(`${date(l.day)} ${time(l.minute)} - ${l.author}: <Médias omis>`);
+    ios.push(`[${date(l.day)} ${t}] ${l.author}: ‎${OMITTED_IOS[kind]}`);
+    iosMedia.push(`[${date(l.day)} ${t}] ${l.author}: ‎<pièce jointe : ${file}>`);
+    continue;
+  }
+  const a = { DELETED: 'Ce message a été supprimé' }[l.text] ?? l.text;
+  const i = { DELETED: '‎Ce message a été supprimé.' }[l.text] ?? l.text;
   android.push(`${date(l.day)} ${time(l.minute)} - ${l.author}: ${a}`);
-  ios.push(`[${date(l.day)} ${time(l.minute, true)}] ${l.author}: ${i}`);
+  ios.push(`[${date(l.day)} ${t}] ${l.author}: ${i}`);
+  iosMedia.push(`[${date(l.day)} ${t}] ${l.author}: ${i}`);
 }
 
 const root = new URL('../samples/', import.meta.url);
 writeFileSync(new URL('Discussion WhatsApp avec Les Potes.txt', root), android.join('\n') + '\n');
 writeFileSync(new URL('WhatsApp Chat - Les Potes (iPhone).txt', root), ios.join('\n') + '\n');
-console.log(`${lines.length} messages écrits dans samples/`);
+writeFileSync(join(dir, '_chat.txt'), iosMedia.join('\n') + '\n');
+const zipPath = fileURLToPath(new URL('WhatsApp Chat - Les Potes (avec médias).zip', root));
+rmSync(zipPath, { force: true });
+execFileSync('zip', ['-q', '-r', zipPath, '.'], { cwd: dir });
+rmSync(dir, { recursive: true });
+console.log(`${lines.length} messages, dont ${seq} médias, écrits dans samples/`);

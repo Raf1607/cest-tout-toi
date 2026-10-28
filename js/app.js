@@ -1,10 +1,11 @@
 // Écrans du jeu. Le même code sert l'hôte (qui tient la partie dans `game`) et les invités
 // (qui reçoivent leur vue de la partie par `client`) : chaque écran se dessine à partir de `view`.
-/* global JSZip, qrcode, NoSleep */
+/* global qrcode, NoSleep */
 import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
 import { Game, ROUNDS, SECONDS } from './game.js';
 import { openRoom, Client } from './net.js';
+import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
 
 const $app = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -49,31 +50,56 @@ function qrSvg(text) {
 }
 const nameOf = p => p.author || 'Nouveau joueur';
 
-// ——— Hôte ———
-
-async function readFile(file) {
-  if (!/\.zip$/i.test(file.name) && !/zip/.test(file.type)) return file.text();
-  const zip = await JSZip.loadAsync(file);
-  const entries = Object.values(zip.files).filter(f => !f.dir && /\.txt$/i.test(f.name) && !/(^|\/)__MACOSX\//.test(f.name));
-  entries.sort((a, b) => /_chat\.txt$/.test(b.name) - /_chat\.txt$/.test(a.name));
-  if (!entries.length) throw new Error('Ce fichier zip ne contient pas de discussion (.txt).');
-  return entries[0].async('string');
+// Stickers, GIF et photos à montrer : id (nom du fichier dans l'export) → adresse locale de l'image.
+const mediaCache = new Map();
+function mediaArrived(id) {
+  if (view?.round?.media?.id !== id) return;
+  $app.dataset.key = '';   // redessine l'écran avec l'image
+  render();
 }
 
-async function host(getText, fileName) {
+// ——— Hôte ———
+
+async function host(getFile) {
   setUi({ screen: 'busy', busy: 'Lecture de la discussion…', error: '' });
   try {
-    const chat = parseChat(await getText(), fileName);
+    const file = await getFile();
+    const { text, files, entries } = await readExport(file);
+    const chat = parseChat(text, file.name);
     if (chat.messages.length < 50) throw new Error('Ce fichier ne ressemble pas à un export de discussion WhatsApp, ou la discussion est trop courte.');
-    setUi({ busy: `Analyse de ${fmt(chat.messages.length)} messages…` });
+    setUi({ busy: `Analyse de ${fmt(chat.messages.length + chat.medias.length)} messages${files.size ? ` et ${fmt(files.size)} médias` : ''}…` });
     await new Promise(r => setTimeout(r, 50));
-    const analysis = analyze(chat);
+    const analysis = analyze(chat, files);
     analysis.title ||= 'la discussion';
     if (analysis.authors.filter(a => a.tics.length).length < 2) {
       throw new Error('Pas assez de tics trouvés : il faut au moins deux membres bavards dans la discussion.');
     }
     setUi({ busy: 'Création de la partie…' });
     const conns = new Map();
+    // Le média de la manche est préparé une fois, puis envoyé à chaque téléphone (et à ceux qui
+    // arrivent ou se reconnectent en cours de manche). Celui de la manche suivante part en avance.
+    const shared = new Map();   // id → morceaux prêts à envoyer, ou null pendant la préparation
+    const sendChunks = (conn, chunks) => { for (const c of chunks) if (conn.open) conn.send(c); };
+    async function share(tic) {
+      const id = tic?.file;
+      if (!id || shared.has(id) || !entries.has(id)) return;
+      shared.set(id, null);
+      try {
+        const blob = await mediaBlob(entries.get(id), id, tic.kind === 'photo');
+        mediaCache.set(id, URL.createObjectURL(blob));
+        mediaArrived(id);
+        const chunks = await toChunks(id, blob);
+        shared.set(id, chunks);
+        for (const conn of conns.values()) sendChunks(conn, chunks);
+      } catch (err) {
+        console.warn('Média illisible', id, err);
+      }
+    }
+    function shareRound() {
+      if (game.phase !== 'question' && game.phase !== 'reveal') return;
+      share(game.round.card.tic);
+      if (game.phase === 'reveal') share(game.deck[game.index + 1]?.tic);
+    }
     const room = await openRoom(conn => {
       let pid = null;
       conn.on('data', msg => {
@@ -83,6 +109,8 @@ async function host(getText, fileName) {
           conns.set(pid, conn);
           if (old && old !== conn) old.close();
           game.join(pid);
+          const current = game.round && shared.get(game.round.card.tic.file);
+          if (current && game.phase !== 'lobby') sendChunks(conn, current);
         } else if (pid) game.handle(pid, msg);
       });
       conn.on('close', () => { if (pid && conns.get(pid) === conn) { conns.delete(pid); game.leave(pid); } });
@@ -90,6 +118,7 @@ async function host(getText, fileName) {
     game = new Game(analysis, room.code, myId, () => {
       for (const [pid, conn] of conns) if (conn.open) conn.send({ t: 'state', s: game.view(pid) });
       show(game.view(myId));
+      shareRound();
     });
     window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
     ui.screen = 'game';
@@ -108,8 +137,12 @@ function join(code) {
   if (params.get('p') !== code) history.replaceState(null, '', `?p=${code}`);
   setUi({ screen: 'busy', busy: `Connexion à la partie ${code}…`, error: '' });
   client?.close();
+  const inbox = new MediaInbox((id, url) => { mediaCache.set(id, url); mediaArrived(id); });
   client = new Client(code, myId, {
-    onMessage(msg) { if (msg?.t === 'state') { ui.screen = 'game'; show(msg.s); } },
+    onMessage(msg) {
+      if (msg?.t === 'state') { ui.screen = 'game'; show(msg.s); }
+      else if (msg?.t === 'media') inbox.add(msg);
+    },
     onStatus(status) {
       const errors = {
         notfound: `Partie ${code} introuvable. Vérifie le code.`,
@@ -186,8 +219,9 @@ function homeScreen() {
       <label class="button primary file">Importer la discussion<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <details>
         <summary>Comment exporter la discussion&nbsp;?</summary>
-        <p><b>iPhone</b> — ouvre la discussion, touche le nom du groupe en haut, puis <i>Exporter la discussion</i> › <i>Sans médias</i> › <i>Enregistrer dans Fichiers</i>. Reviens ici et choisis le fichier.</p>
-        <p><b>Android</b> — ouvre la discussion, menu ⋮ › <i>Plus</i> › <i>Exporter la discussion</i> › <i>Sans médias</i>, et enregistre le fichier sur le téléphone.</p>
+        <p><b>iPhone</b> — ouvre la discussion, touche le nom du groupe en haut, puis <i>Exporter la discussion</i> › <i>Joindre les médias</i> (ou <i>Sans médias</i>) › <i>Enregistrer dans Fichiers</i>. Reviens ici et choisis le fichier.</p>
+        <p><b>Android</b> — ouvre la discussion, menu ⋮ › <i>Plus</i> › <i>Exporter la discussion</i> › <i>Inclure les médias</i> (ou <i>Sans médias</i>), et enregistre le fichier sur le téléphone.</p>
+        <p><b>Avec les médias</b>, le jeu montre aussi les stickers et GIF fétiches de chacun (et, si l'hôte l'active, des photos). Le fichier est plus gros et ne garde que les messages les plus récents. Sans médias, il y a quand même des questions du genre « qui envoie le plus de stickers ».</p>
       </details>
       <button class="link" data-act="demo">Essayer avec une discussion d'exemple</button>
     </section>`;
@@ -245,6 +279,11 @@ function lobbyScreen() {
         <span>Inclure les membres absents${v.absentCount ? ` <small>(${v.absentCount})</small>` : ''}</span>
         <input type="checkbox" data-input="absent" ${v.settings.absent ? 'checked' : ''}>
       </label>
+      ${v.photoCount ? `
+      <label class="setting toggle">
+        <span>Questions sur les photos <small>(n'importe quelle photo du groupe peut s'afficher)</small></span>
+        <input type="checkbox" data-input="photos" ${v.settings.photos ? 'checked' : ''}>
+      </label>` : ''}
       <div class="actions">
         <button class="primary big" data-act="start" ${v.canStart.ok ? '' : 'disabled'}>Lancer la partie</button>
         ${v.canStart.ok ? '' : `<p class="hint">${esc(v.canStart.reason)}</p>`}
@@ -252,8 +291,32 @@ function lobbyScreen() {
     : `<p class="wait">${me?.author ? "L'hôte va lancer la partie…" : 'Choisis ton nom dans la liste.'}</p>`}`;
 }
 
-const ASK = { expr: 'Qui dit tout le temps…', mot: 'Qui dit tout le temps…', emoji: 'Qui envoie tout le temps…', ponct: 'Qui écrit tout le temps…' };
-const bubble = r => `<div class="bubble ${r.kind}">${r.kind === 'expr' || r.kind === 'mot' ? `«&nbsp;${esc(r.text)}&nbsp;»` : esc(r.text)}</div>`;
+const ASK = {
+  expr: 'Qui dit tout le temps…', mot: 'Qui dit tout le temps…', emoji: 'Qui envoie tout le temps…', ponct: 'Qui écrit tout le temps…',
+  sticker: 'Qui envoie tout le temps ce sticker ?', gif: 'Qui envoie tout le temps ce GIF ?', photo: 'Qui a envoyé cette photo ?',
+  habitude: 'Qui envoie le plus…',
+};
+
+function bubble(r) {
+  if (r.media) {
+    const url = mediaCache.get(r.media.id);
+    const inner = !url ? '<span class="wait">Chargement…</span>'
+      : r.media.type === 'video' ? `<video src="${url}" autoplay loop muted playsinline></video>`
+      : `<img src="${url}" alt="">`;
+    return `<div class="bubble media ${r.kind}">${inner}</div>`;
+  }
+  if (r.kind === 'habitude') return `<div class="bubble habitude">de ${esc(r.text)}&nbsp;?</div>`;
+  return `<div class="bubble ${r.kind}">${r.kind === 'expr' || r.kind === 'mot' ? `«&nbsp;${esc(r.text)}&nbsp;»` : esc(r.text)}</div>`;
+}
+
+function statLine(r) {
+  const others = r.others === 0 ? "Personne d'autre, jamais."
+    : `Les autres : ${fmt(r.others)} fois en tout${r.topOther && r.others > r.topOther.uses ? `, dont ${fmt(r.topOther.uses)} pour ${esc(r.topOther.name)}` : r.topOther ? ` (${esc(r.topOther.name)})` : ''}.`;
+  if (r.kind === 'photo') return `Une de ses ${fmt(r.uses)} photos.`;
+  if (r.kind === 'sticker' || r.kind === 'gif') return `Envoyé <b>${fmt(r.uses)}</b> fois. ${others}`;
+  if (r.kind === 'habitude') return `<b>${fmt(r.uses)}</b> ${esc(r.text)} sur ses ${fmt(r.ownerMessages)} messages. ${others}`;
+  return `Dans <b>${fmt(r.uses)}</b> de ses ${fmt(r.ownerMessages)} messages. ${others}`;
+}
 
 function questionScreen() {
   const r = view.round;
@@ -294,14 +357,12 @@ function highlight(text, part) {
 function revealScreen() {
   const v = view, r = v.round;
   const ownerPlayer = v.players.find(p => p.author === r.answer);
-  const others = r.others === 0 ? "Personne d'autre, jamais."
-    : `Les autres : ${r.others} fois en tout${r.topOther && r.others > r.topOther.uses ? `, dont ${r.topOther.uses} pour ${esc(r.topOther.name)}` : r.topOther ? ` (${esc(r.topOther.name)})` : ''}.`;
   const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score);
   return `
     <div class="hud"><span>Manche ${r.n}/${r.total}</span></div>
     ${bubble(r)}
     <p class="answer">C'est tout <b>${esc(r.answer)}</b>&nbsp;!</p>
-    <p class="stat">Dans <b>${fmt(r.uses)}</b> de ses ${fmt(r.ownerMessages)} messages. ${others}</p>
+    <p class="stat">${statLine(r)}</p>
     ${r.example ? `<figure class="example"><figcaption>${esc(r.answer)}</figcaption><p>${highlight(r.example, r.text)}</p></figure>` : ''}
     ${ownerPlayer && r.votes[ownerPlayer.id] && r.votes[ownerPlayer.id] !== r.answer ? `<p class="fun">Même ${esc(r.answer)} n'a pas trouvé&nbsp;!</p>` : ''}
     <ul class="votes">
@@ -361,7 +422,10 @@ $app.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
   const { act } = el.dataset;
-  if (act === 'demo') host(() => fetch('samples/' + encodeURIComponent('Discussion WhatsApp avec Les Potes.txt')).then(r => r.text()), 'Discussion WhatsApp avec Les Potes.txt');
+  if (act === 'demo') {
+    const name = 'WhatsApp Chat - Les Potes (avec médias).zip';
+    host(() => fetch('samples/' + encodeURIComponent(name)).then(r => r.blob()).then(b => new File([b], name, { type: 'application/zip' })));
+  }
   else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });
   else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
   else if (act === 'set') send({ t: 'settings', settings: { [el.dataset.key]: Number(el.dataset.value) } });
@@ -377,8 +441,9 @@ $app.addEventListener('click', async e => {
 
 $app.addEventListener('change', e => {
   const input = e.target.dataset.input;
-  if (input === 'file' && e.target.files[0]) { const file = e.target.files[0]; host(() => readFile(file), file.name); }
+  if (input === 'file' && e.target.files[0]) { const file = e.target.files[0]; host(async () => file); }
   if (input === 'absent') send({ t: 'settings', settings: { absent: e.target.checked } });
+  if (input === 'photos') send({ t: 'settings', settings: { photos: e.target.checked } });
 });
 
 $app.addEventListener('submit', e => {
