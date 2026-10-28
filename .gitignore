@@ -1,0 +1,9 @@
+# Exports de discussions WhatsApp : jamais dans le dépôt, sauf les discussions factices de samples/
+*.txt
+*.zip
+!samples/*.txt
+!samples/*.zip
+
+.DS_Store
+.claude/
+node_modules/

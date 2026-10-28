@@ -1,0 +1,394 @@
+// Écrans du jeu. Le même code sert l'hôte (qui tient la partie dans `game`) et les invités
+// (qui reçoivent leur vue de la partie par `client`) : chaque écran se dessine à partir de `view`.
+/* global JSZip, qrcode, NoSleep */
+import { parseChat } from './whatsapp.js';
+import { analyze } from './tics.js';
+import { Game, ROUNDS, SECONDS } from './game.js';
+import { openRoom, Client } from './net.js';
+
+const $app = document.getElementById('app');
+const params = new URLSearchParams(location.search);
+
+// Identité du joueur, propre à l'onglet : un rechargement de page rejoint la partie sous le même nom.
+const store = {
+  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* navigation privée */ } },
+};
+const myId = store.get('ctt-id') || (() => {
+  const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  store.set('ctt-id', id);
+  return id;
+})();
+
+let ui = { screen: 'home', error: '', busy: '', status: 'ok' };
+let view = null;
+let game = null;
+let client = null;
+let endsAt = 0;
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = n => n.toLocaleString('fr-FR');
+const send = msg => (game ? game.handle(myId, msg) : client?.send(msg));
+// Ouverte sur l'ordinateur qui fait tourner serve.py, la page connaît l'adresse du jeu sur le
+// Wi-Fi : c'est elle qu'on donne aux téléphones (localhost ne mènerait nulle part).
+let lanUrl = null;
+if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+  fetch('lan.json').then(r => (r.ok ? r.json() : null)).then(d => {
+    lanUrl = d?.url || null;
+    if (lanUrl && ui.screen === 'home') render();
+  }).catch(() => { /* servi par un autre serveur */ });
+}
+const inviteUrl = code => `${lanUrl || location.origin + location.pathname}?p=${code}`;
+
+function qrSvg(text) {
+  if (typeof qrcode !== 'function') return '';
+  const q = qrcode(0, 'M');
+  q.addData(text);
+  q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+}
+const nameOf = p => p.author || 'Nouveau joueur';
+
+// ——— Hôte ———
+
+async function readFile(file) {
+  if (!/\.zip$/i.test(file.name) && !/zip/.test(file.type)) return file.text();
+  const zip = await JSZip.loadAsync(file);
+  const entries = Object.values(zip.files).filter(f => !f.dir && /\.txt$/i.test(f.name) && !/(^|\/)__MACOSX\//.test(f.name));
+  entries.sort((a, b) => /_chat\.txt$/.test(b.name) - /_chat\.txt$/.test(a.name));
+  if (!entries.length) throw new Error('Ce fichier zip ne contient pas de discussion (.txt).');
+  return entries[0].async('string');
+}
+
+async function host(getText, fileName) {
+  setUi({ screen: 'busy', busy: 'Lecture de la discussion…', error: '' });
+  try {
+    const chat = parseChat(await getText(), fileName);
+    if (chat.messages.length < 50) throw new Error('Ce fichier ne ressemble pas à un export de discussion WhatsApp, ou la discussion est trop courte.');
+    setUi({ busy: `Analyse de ${fmt(chat.messages.length)} messages…` });
+    await new Promise(r => setTimeout(r, 50));
+    const analysis = analyze(chat);
+    analysis.title ||= 'la discussion';
+    if (analysis.authors.filter(a => a.tics.length).length < 2) {
+      throw new Error('Pas assez de tics trouvés : il faut au moins deux membres bavards dans la discussion.');
+    }
+    setUi({ busy: 'Création de la partie…' });
+    const conns = new Map();
+    const room = await openRoom(conn => {
+      let pid = null;
+      conn.on('data', msg => {
+        if (msg?.t === 'hello' && typeof msg.id === 'string') {
+          pid = msg.id.slice(0, 40);
+          const old = conns.get(pid);
+          conns.set(pid, conn);
+          if (old && old !== conn) old.close();
+          game.join(pid);
+        } else if (pid) game.handle(pid, msg);
+      });
+      conn.on('close', () => { if (pid && conns.get(pid) === conn) { conns.delete(pid); game.leave(pid); } });
+    });
+    game = new Game(analysis, room.code, myId, () => {
+      for (const [pid, conn] of conns) if (conn.open) conn.send({ t: 'state', s: game.view(pid) });
+      show(game.view(myId));
+    });
+    window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
+    ui.screen = 'game';
+    show(game.view(myId));
+  } catch (err) {
+    console.error(err);
+    setUi({ screen: 'home', error: err.message });
+  }
+}
+
+// ——— Invité ———
+
+function join(code) {
+  code = code.toUpperCase().replace(/[^A-Z]/g, '');
+  if (code.length !== 4) return setUi({ error: 'Le code de la partie fait 4 lettres.' });
+  if (params.get('p') !== code) history.replaceState(null, '', `?p=${code}`);
+  setUi({ screen: 'busy', busy: `Connexion à la partie ${code}…`, error: '' });
+  client?.close();
+  client = new Client(code, myId, {
+    onMessage(msg) { if (msg?.t === 'state') { ui.screen = 'game'; show(msg.s); } },
+    onStatus(status) {
+      const errors = {
+        notfound: `Partie ${code} introuvable. Vérifie le code.`,
+        offline: 'Impossible de joindre le serveur de mise en relation. Vérifie la connexion internet.',
+        gone: "La connexion avec l'hôte est perdue.",
+      };
+      if (errors[status]) {
+        client = null;
+        view = null;
+        history.replaceState(null, '', location.pathname);
+        setUi({ screen: 'home', error: errors[status], status: 'ok' });
+      } else setUi({ status });
+    },
+  });
+}
+
+// ——— Affichage ———
+
+function setUi(patch) { Object.assign(ui, patch); render(); }
+
+function show(v) {
+  const before = view;
+  view = v;
+  const fresh = v.phase === 'question' && (before?.phase !== 'question' || before.round.n !== v.round.n);
+  if (fresh && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(40);
+  endsAt = v.phase === 'question' ? Date.now() + v.round.remaining : 0;   // l'hôte peut raccourcir le temps
+  render();
+}
+
+function render() {
+  // Pendant une manche, les votes arrivent en continu : on met à jour les boutons sans les
+  // redessiner, pour qu'un toucher en cours ne soit pas perdu.
+  const key = ui.screen === 'game' && view.phase === 'question' ? `${view.round.n}/${ui.status}` : '';
+  if (key && $app.dataset.key === key) { patchQuestion(); tick(); return; }
+  let html;
+  if (ui.screen === 'home') html = homeScreen();
+  else if (ui.screen === 'busy') html = `<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
+  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, end: endScreen }[view.phase]();
+  const banner = ui.status === 'lost' ? '<div class="banner">Connexion perdue, reconnexion…</div>' : '';
+  $app.innerHTML = banner + html;
+  $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
+  $app.dataset.key = key;
+  if (key) patchQuestion();
+  tick();
+}
+
+function homeScreen() {
+  const code = params.get('p') || '';
+  return `
+    <header class="brand">
+      <h1>C'est <span>tout</span> toi&nbsp;!</h1>
+      <p>Le jeu qui démasque les tics de langage de votre groupe WhatsApp.</p>
+    </header>
+    ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
+    ${lanUrl ? `
+    <section class="card invite">
+      <div class="qr">${qrSvg(lanUrl)}</div>
+      <div>
+        <h2>Sur les téléphones</h2>
+        <p>Connectés au même Wi-Fi que cet ordinateur, scannez ce code ou ouvrez&nbsp;:</p>
+        <p class="url">${esc(lanUrl)}</p>
+      </div>
+    </section>` : ''}
+    <section class="card">
+      <h2>Rejoindre une partie</h2>
+      <form class="join" data-form="join">
+        <input name="code" value="${esc(code)}" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Code de la partie">
+        <button class="primary" type="submit">Rejoindre</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Créer une partie</h2>
+      <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que les expressions à deviner, avec un message d'exemple.</p>
+      <label class="button primary file">Importer la discussion<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
+      <details>
+        <summary>Comment exporter la discussion&nbsp;?</summary>
+        <p><b>iPhone</b> — ouvre la discussion, touche le nom du groupe en haut, puis <i>Exporter la discussion</i> › <i>Sans médias</i> › <i>Enregistrer dans Fichiers</i>. Reviens ici et choisis le fichier.</p>
+        <p><b>Android</b> — ouvre la discussion, menu ⋮ › <i>Plus</i> › <i>Exporter la discussion</i> › <i>Sans médias</i>, et enregistre le fichier sur le téléphone.</p>
+      </details>
+      <button class="link" data-act="demo">Essayer avec une discussion d'exemple</button>
+    </section>`;
+}
+
+function playerList(v) {
+  return `<ul class="players">${v.players.map(p => `
+    <li class="${p.connected ? '' : 'off'}">
+      <span class="name">${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
+      ${p.host ? '<small class="tag">hôte</small>' : ''}
+      ${p.connected ? '' : '<small class="tag">déconnecté</small>'}
+    </li>`).join('')}</ul>`;
+}
+
+function segmented(name, values, current, label) {
+  return `<div class="seg" role="group" aria-label="${label}">${values.map(x =>
+    `<button data-act="set" data-key="${name}" data-value="${x}" class="${x === current ? 'on' : ''}">${name === 'seconds' ? x + ' s' : x}</button>`).join('')}</div>`;
+}
+
+function lobbyScreen() {
+  const v = view;
+  const me = v.players.find(p => p.id === v.me);
+  const taken = new Map(v.players.filter(p => p.author).map(p => [p.author, p]));
+  const canShare = navigator.share || navigator.clipboard;   // absents en http sur le réseau local
+  return `
+    <div class="top"><span class="title">« ${esc(v.title)} »</span></div>
+    <section class="card invite">
+      ${v.host ? `<div class="qr">${qrSvg(inviteUrl(v.code))}</div>` : ''}
+      <div>
+        <p class="label">Code de la partie</p>
+        <p class="code">${esc(v.code)}</p>
+        ${v.host ? (canShare ? '<button class="small" data-act="share">Partager le lien</button>' : `<p class="url">${esc(inviteUrl(v.code))}</p>`) : ''}
+      </div>
+    </section>
+
+    <h2>Qui es-tu dans la discussion&nbsp;?</h2>
+    <div class="members">${v.members.map(m => {
+      const owner = taken.get(m.name);
+      const mine = owner?.id === v.me;
+      const busy = owner && !mine && owner.connected;
+      return `<button data-act="claim" data-author="${esc(m.name)}" class="${mine ? 'on' : ''}" ${busy ? 'disabled' : ''}>
+        <span>${esc(m.name)}</span>
+        <small>${busy ? 'déjà pris' : `${fmt(m.messages)} messages${m.tics ? '' : ' · aucun tic'}`}</small>
+      </button>`;
+    }).join('')}</div>
+
+    <h2>Joueurs <small>${v.players.filter(p => p.connected).length}</small></h2>
+    ${playerList(v)}
+
+    ${v.host ? `
+      <h2>Réglages</h2>
+      <div class="setting"><span>Manches</span>${segmented('rounds', ROUNDS, v.settings.rounds, 'Nombre de manches')}</div>
+      <div class="setting"><span>Temps pour voter</span>${segmented('seconds', SECONDS, v.settings.seconds, 'Temps pour voter')}</div>
+      <label class="setting toggle">
+        <span>Inclure les membres absents${v.absentCount ? ` <small>(${v.absentCount})</small>` : ''}</span>
+        <input type="checkbox" data-input="absent" ${v.settings.absent ? 'checked' : ''}>
+      </label>
+      <div class="actions">
+        <button class="primary big" data-act="start" ${v.canStart.ok ? '' : 'disabled'}>Lancer la partie</button>
+        ${v.canStart.ok ? '' : `<p class="hint">${esc(v.canStart.reason)}</p>`}
+      </div>`
+    : `<p class="wait">${me?.author ? "L'hôte va lancer la partie…" : 'Choisis ton nom dans la liste.'}</p>`}`;
+}
+
+const ASK = { expr: 'Qui dit tout le temps…', mot: 'Qui dit tout le temps…', emoji: 'Qui envoie tout le temps…', ponct: 'Qui écrit tout le temps…' };
+const bubble = r => `<div class="bubble ${r.kind}">${r.kind === 'expr' || r.kind === 'mot' ? `«&nbsp;${esc(r.text)}&nbsp;»` : esc(r.text)}</div>`;
+
+function questionScreen() {
+  const r = view.round;
+  return `
+    <div class="hud"><span>Manche ${r.n}/${r.total}</span><span class="timer" data-timer></span></div>
+    <div class="bar"><i data-bar></i></div>
+    <p class="ask">${ASK[r.kind]}</p>
+    ${bubble(r)}
+    <div class="options">${r.options.map(name =>
+      `<button data-act="vote" data-author="${esc(name)}"><span>${esc(name)}</span><span class="who"></span></button>`).join('')}</div>
+    <p class="voters"></p>`;
+}
+
+// Qui a voté pour qui, en direct, sous chaque nom.
+function patchQuestion() {
+  const v = view, r = v.round;
+  const fans = {};
+  for (const p of v.players) if (r.votes[p.id]) (fans[r.votes[p.id]] ||= []).push(p);
+  for (const btn of $app.querySelectorAll('[data-act=vote]')) {
+    const name = btn.dataset.author;
+    btn.classList.toggle('on', r.votes[v.me] === name);
+    btn.querySelector('.who').innerHTML = (fans[name] || [])
+      .map(p => `<i class="${p.id === v.me ? 'me' : ''}">${p.id === v.me ? 'toi' : esc(nameOf(p).split(' ')[0])}</i>`).join('');
+  }
+  const present = v.players.filter(p => p.connected);
+  const voted = present.filter(p => r.votes[p.id]).length;
+  $app.querySelector('.voters').textContent = r.allVoted
+    ? "Tout le monde a voté : dernières secondes pour changer d'avis !"
+    : `${voted}/${present.length} ont voté · on peut changer d'avis jusqu'à la fin`;
+}
+
+function highlight(text, part) {
+  const i = text.toLowerCase().indexOf(part.toLowerCase());
+  if (i < 0) return esc(text);
+  return esc(text.slice(0, i)) + `<mark>${esc(text.slice(i, i + part.length))}</mark>` + esc(text.slice(i + part.length));
+}
+
+function revealScreen() {
+  const v = view, r = v.round;
+  const ownerPlayer = v.players.find(p => p.author === r.answer);
+  const others = r.others === 0 ? "Personne d'autre, jamais."
+    : `Les autres : ${r.others} fois en tout${r.topOther && r.others > r.topOther.uses ? `, dont ${r.topOther.uses} pour ${esc(r.topOther.name)}` : r.topOther ? ` (${esc(r.topOther.name)})` : ''}.`;
+  const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score);
+  return `
+    <div class="hud"><span>Manche ${r.n}/${r.total}</span></div>
+    ${bubble(r)}
+    <p class="answer">C'est tout <b>${esc(r.answer)}</b>&nbsp;!</p>
+    <p class="stat">Dans <b>${fmt(r.uses)}</b> de ses ${fmt(r.ownerMessages)} messages. ${others}</p>
+    ${r.example ? `<figure class="example"><figcaption>${esc(r.answer)}</figcaption><p>${highlight(r.example, r.text)}</p></figure>` : ''}
+    ${ownerPlayer && r.votes[ownerPlayer.id] && r.votes[ownerPlayer.id] !== r.answer ? `<p class="fun">Même ${esc(r.answer)} n'a pas trouvé&nbsp;!</p>` : ''}
+    <ul class="votes">
+      <li class="head"><span>Joueur</span><span>a voté</span><span>points</span></li>
+      ${rows.map(p => {
+        const vote = r.votes[p.id];
+        const ok = vote === r.answer;
+        return `<li class="${vote ? (ok ? 'ok' : 'ko') : 'none'} ${p.connected ? '' : 'off'}">
+          <span class="name">${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
+          <span class="vote">${vote ? esc(vote) : 'pas voté'}</span>
+          <span class="pts">${ok ? '<i>+1</i>' : ''}<b>${p.score}</b></span>
+        </li>`;
+      }).join('')}
+    </ul>
+    ${v.host
+      ? `<div class="actions"><button class="primary big" data-act="next">${r.last ? 'Voir le classement' : 'Manche suivante'}</button></div>`
+      : `<p class="wait">En attente de l'hôte…</p>`}`;
+}
+
+function endScreen() {
+  const v = view;
+  const ranking = [...v.players].filter(p => p.author).sort((a, b) => b.score - a.score);
+  const rank = p => 1 + ranking.filter(q => q.score > p.score).length;   // ex æquo : même rang
+  return `
+    <header class="brand small"><h1>Classement</h1></header>
+    <ol class="ranking">${ranking.map(p => `
+      <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(p.author)}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
+    <h2>Les tics de chacun</h2>
+    <div class="portraits">${v.portraits.map(x => `
+      <div class="portrait"><b>${esc(x.name)}</b><p>${x.tics.map(t => `<span>${esc(t)}</span>`).join('')}</p></div>`).join('')}</div>
+    ${v.host ? '<div class="actions"><button class="primary big" data-act="replay">Rejouer</button></div>' : `<p class="wait">L'hôte peut relancer une partie.</p>`}`;
+}
+
+// Compte à rebours : recalculé localement entre deux messages de l'hôte.
+function tick() {
+  const timer = $app.querySelector('[data-timer]');
+  if (!timer || !endsAt) return;
+  const left = Math.max(0, endsAt - Date.now());
+  timer.textContent = Math.ceil(left / 1000);
+  timer.classList.toggle('hurry', left < 5000);
+  $app.querySelector('[data-bar]').style.width = `${(100 * left) / (view.round.seconds * 1000)}%`;
+}
+setInterval(tick, 200);
+
+// L'écran ne doit pas se mettre en veille pendant la partie : la connexion serait coupée.
+// NoSleep passe par le verrouillage d'écran du navigateur, ou à défaut par une petite vidéo
+// muette en boucle (cas de la page servie en http sur le réseau local). Il faut un geste
+// de l'utilisateur pour l'activer : on le fait au premier toucher.
+const noSleep = typeof NoSleep === 'function' ? new NoSleep() : null;
+document.addEventListener('click', () => {
+  if (noSleep && !noSleep.isEnabled) noSleep.enable().catch(() => { /* refusé par le navigateur */ });
+}, true);
+
+// ——— Événements ———
+
+$app.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const { act } = el.dataset;
+  if (act === 'demo') host(() => fetch('samples/' + encodeURIComponent('Discussion WhatsApp avec Les Potes.txt')).then(r => r.text()), 'Discussion WhatsApp avec Les Potes.txt');
+  else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });
+  else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
+  else if (act === 'set') send({ t: 'settings', settings: { [el.dataset.key]: Number(el.dataset.value) } });
+  else if (act === 'start' || act === 'next' || act === 'replay') send({ t: act });
+  else if (act === 'share') {
+    const url = inviteUrl(view.code);
+    try {
+      if (navigator.share) await navigator.share({ title: "C'est tout toi !", text: `Rejoins la partie ${view.code}`, url });
+      else { await navigator.clipboard.writeText(url); el.textContent = 'Lien copié'; }
+    } catch { /* partage annulé */ }
+  }
+});
+
+$app.addEventListener('change', e => {
+  const input = e.target.dataset.input;
+  if (input === 'file' && e.target.files[0]) { const file = e.target.files[0]; host(() => readFile(file), file.name); }
+  if (input === 'absent') send({ t: 'settings', settings: { absent: e.target.checked } });
+});
+
+$app.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.dataset.form === 'join') join(new FormData(e.target).get('code') || '');
+});
+
+$app.addEventListener('input', e => {
+  if (e.target.name === 'code') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+});
+
+if (params.get('p')) join(params.get('p'));
+else render();

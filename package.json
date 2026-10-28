@@ -1,0 +1,9 @@
+{
+  "name": "cest-tout-toi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sample": "node tools/make-sample.mjs",
+    "check": "node tools/check.mjs"
+  }
+}
