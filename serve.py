@@ -101,7 +101,7 @@ def lan_address():
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     ip = lan_address()
-    print(f"C'est tout toi ! : http://localhost:{PORT}", flush=True)
+    print(f"Who is bro ? : http://localhost:{PORT}", flush=True)
     print(f'Sur les téléphones (même Wi-Fi) : http://{ip}:{PORT}' if ip
           else 'Réseau local : adresse introuvable (Wi-Fi coupé ?)', flush=True)
     take_over_port()

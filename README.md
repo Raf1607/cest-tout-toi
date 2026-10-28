@@ -1,4 +1,4 @@
-# C'est tout toi !
+# Who is bro ?
 
 Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son téléphone.
 

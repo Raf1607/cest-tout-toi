@@ -193,7 +193,7 @@ function homeScreen() {
   const code = params.get('p') || '';
   return `
     <header class="brand">
-      <h1>C'est <span>tout</span> toi&nbsp;!</h1>
+      <h1>Who is <span>bro</span>&nbsp;?</h1>
       <p>Le jeu qui démasque les tics de langage de votre groupe WhatsApp.</p>
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
@@ -433,7 +433,7 @@ $app.addEventListener('click', async e => {
   else if (act === 'share') {
     const url = inviteUrl(view.code);
     try {
-      if (navigator.share) await navigator.share({ title: "C'est tout toi !", text: `Rejoins la partie ${view.code}`, url });
+      if (navigator.share) await navigator.share({ title: 'Who is bro ?', text: `Rejoins la partie ${view.code}`, url });
       else { await navigator.clipboard.writeText(url); el.textContent = 'Lien copié'; }
     } catch { /* partage annulé */ }
   }
