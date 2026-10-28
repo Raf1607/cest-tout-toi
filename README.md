@@ -2,45 +2,61 @@
 
 Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son téléphone.
 
-1. L'hôte importe l'export de la discussion du groupe (`.txt` ou `.zip`, « Sans médias »).
-2. Le jeu y repère les tics de langage de chacun : mots, expressions, emojis, ponctuation.
-3. Les autres rejoignent avec le code à 4 lettres (ou le QR code) et choisissent qui ils sont dans la discussion.
-4. À chaque manche, une expression s'affiche sur tous les téléphones : chacun vote pour celui ou celle qui la dit tout le temps. On voit en direct qui vote pour qui, et on peut changer d'avis jusqu'à la fin ; quand tout le monde a voté, il reste 5 secondes. 1 point par bonne réponse.
+**Jouer : https://raf1607.github.io/cest-tout-toi/**
 
-## Lancer en local
+## Lancer une partie
 
-Sur un ordinateur branché au même Wi-Fi que les téléphones :
+1. **Exporter la discussion** (une fois par partie, sur le téléphone de l'hôte) : dans WhatsApp, ouvrir le groupe, toucher son nom en haut, *Exporter la discussion* › *Sans médias* › *Enregistrer dans Fichiers*. Sur Android : menu ⋮ › *Plus* › *Exporter la discussion*.
+2. **Créer la partie** : ouvrir le lien du jeu, toucher *Importer la discussion* et choisir le fichier exporté. Le téléphone affiche un code de 4 lettres et un QR code. Astuce iPhone : Partager › *Sur l'écran d'accueil* pour avoir le jeu comme une appli.
+3. **Faire entrer les autres** : ils scannent le QR code (ou tapent le code), en Wi-Fi ou en 4G, et choisissent qui ils sont dans la discussion.
+4. **Lancer** : l'hôte règle le nombre de manches et le temps de vote, puis touche *Lancer la partie*. Le bouton s'active quand chaque joueur a choisi son nom ; pas besoin que tous les membres du groupe soient là (l'option *Inclure les membres absents* les ajoute quand même au jeu).
+
+À chaque manche, une expression s'affiche sur tous les téléphones : chacun vote pour celui ou celle qui la dit tout le temps. On voit en direct qui vote pour qui, et on peut changer d'avis jusqu'à la fin ; quand tout le monde a voté, il reste 5 secondes. 1 point par bonne réponse. L'hôte passe à la manche suivante quand le groupe est prêt.
+
+**Pendant la partie, l'hôte garde la page ouverte et l'écran allumé** (sur iPhone, mettre le verrouillage automatique sur *Jamais* par sécurité) : si sa page se ferme, la partie s'arrête. Les autres peuvent recharger la page, ils reviennent avec leur nom et leur score.
+
+## Comment ça marche
+
+- **Aucun serveur de jeu.** Le téléphone de l'hôte tient la partie ; les autres s'y connectent en pair-à-pair (WebRTC, via [PeerJS](https://peerjs.com) et son serveur public de mise en relation, qui ne voit pas le contenu des échanges).
+- **La discussion ne quitte pas le téléphone de l'hôte.** Elle est lue et analysée dans la page, sans être envoyée nulle part ni conservée. Les invités ne reçoivent que la liste des membres, l'expression de la manche, puis à la révélation un message d'exemple et les chiffres.
+- **Aucune vraie discussion dans ce dépôt.** `samples/` ne contient que des discussions inventées, et le `.gitignore` refuse tout autre fichier `.txt` ou `.zip`.
+- **Détection des tics** (`js/tics.js`) : pour chaque membre, les tournures de 1 à 4 mots, emojis et ponctuations qu'il emploie souvent et au moins 2,5 fois plus que chacun des autres (avec un test statistique pour écarter le hasard). Sont écartées : les tournures limitées à une seule conversation (un sujet, pas un tic), les prénoms et noms propres, les fragments redondants (« du coup » / « coup je suis »).
+
+## Modifier le jeu
+
+Tester une modification sur l'ordinateur avant de la publier :
 
 ```bash
 python3 serve.py
 ```
 
-Le serveur affiche l'adresse à ouvrir sur les téléphones (`http://192.168.x.x:8790`) ; http://localhost:8790 sur l'ordinateur montre la même adresse en QR code. L'hôte l'ouvre sur son téléphone et importe la discussion, les autres scannent ensuite le QR code de la partie. Au premier lancement, macOS peut demander d'autoriser les connexions entrantes pour Python : il faut accepter.
+Puis http://localhost:8790. « Essayer avec une discussion d'exemple » lance une partie sur `samples/`, que l'on peut rejoindre depuis un autre onglet. Les téléphones branchés au même Wi-Fi peuvent aussi l'ouvrir, à l'adresse affichée par le serveur (macOS peut demander d'autoriser les connexions entrantes pour Python). Ça sert aussi de solution de secours si GitHub Pages n'est pas disponible.
 
-Seuls les fichiers du jeu sont servis sur le réseau. Les téléphones ont quand même besoin d'internet : pour se trouver entre eux (serveur de mise en relation de PeerJS) et pour charger les bibliothèques.
+Publier la nouvelle version (avec le compte GitHub de Raph ; le site se met à jour en une minute environ) :
 
-« Essayer avec une discussion d'exemple » lance une partie sur `samples/`, que l'on peut rejoindre depuis un autre onglet.
+```bash
+gh auth switch --user Raf1607
+git add -A && git commit -m "Ce qui a changé" && git push
+```
 
-## Comment ça marche
+Outils :
 
-- **Aucun serveur de jeu.** Le téléphone de l'hôte tient la partie ; les autres s'y connectent en pair-à-pair (WebRTC, via [PeerJS](https://peerjs.com) et son serveur public de mise en relation). L'hôte doit garder la page ouverte (l'écran est maintenu allumé quand le navigateur le permet).
-- **La discussion ne quitte pas le téléphone de l'hôte.** Les invités ne reçoivent que l'expression de la manche, puis à la révélation un message d'exemple et les chiffres.
-- **Détection des tics** (`js/tics.js`) : pour chaque membre, les tournures de 1 à 4 mots, emojis et ponctuations qu'il emploie souvent et au moins 2,5 fois plus que chacun des autres (avec un test statistique pour écarter le hasard). Sont écartées : les tournures limitées à une seule conversation (un sujet, pas un tic), les prénoms et noms propres, les fragments redondants (« du coup » / « coup je suis »).
-- Un rechargement de page chez un invité le reconnecte sous le même nom, avec son score.
+```bash
+node tools/test-game.mjs                                       # partie simulée
+node tools/check.mjs "chemin/vers/Discussion WhatsApp avec ….txt"  # tics trouvés dans un export
+node tools/make-sample.mjs                                     # régénère samples/
+```
 
 ## Fichiers
 
 | | |
 |---|---|
-| `serve.py` | serveur local, visible du Wi-Fi |
 | `index.html` | page et styles |
 | `js/whatsapp.js` | lecture des exports iPhone et Android |
 | `js/tics.js` | détection des tics |
 | `js/game.js` | règles et déroulé de la partie (côté hôte) |
 | `js/net.js` | connexions pair-à-pair |
 | `js/app.js` | écrans |
-| `tools/` | `make-sample.mjs` (génère `samples/`), `check.mjs` (affiche les tics d'un export), `test-game.mjs` (partie simulée) |
-
-```bash
-node tools/check.mjs "chemin/vers/Discussion WhatsApp avec ….txt"
-```
+| `serve.py` | serveur local pour tester |
+| `tools/` | partie simulée, analyse d'un export, génération des exemples |
+| `samples/` | discussions inventées pour la démo et les tests |
