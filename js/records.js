@@ -72,7 +72,7 @@ const RECORDS = [
     detail: (w, r) => `Répond en ${duration(w.s.reply)} en général, contre ${duration(r.s.reply)} pour ${r.name}.` },
   { id: 'relance', text: 'relance le groupe quand plus personne ne parle', value: s => s.relaunches, min: 3,
     detail: (w, r) => `A relancé le groupe ${w.s.relaunches} fois après plus de 8 h de silence (${r.name} : ${r.s.relaunches}).` },
-  { id: 'fantome', text: 'est le fantôme du groupe', low: true, ratio: 0.6, value: s => s.messages,
+  { id: 'fantome', text: 'est le fantôme du groupe', low: true, ratio: 0.6, wholeGroup: true, value: s => s.messages,
     detail: (w, r) => `Seulement ${w.s.messages} messages. Le plus discret après : ${r.name} (${r.s.messages}).` },
   { id: 'nuit', text: 'écrit le plus en pleine nuit', value: s => s.night, min: 0.03, need: s => s.nightCount >= 5,
     detail: (w, r) => `${pct(w.s.night)} de ses messages entre minuit et 6 h, contre ${pct(r.s.night)} pour ${r.name}.` },
@@ -82,17 +82,19 @@ const RECORDS = [
     detail: (w, r) => `${w.s.bursts} fois au moins ${RAFALE} messages d'affilée (${r.name} : ${r.s.bursts}).` },
 ];
 
-// members : [{ name, stats }] (les noms proposés au vote). → cartes { kind: 'record', … }
-export function pickRecords(members) {
+// members : [{ name, stats }] (les noms proposés au vote) ; everyone : tous les membres de la discussion,
+// pour les records qui portent sur tout le groupe (le fantôme doit être le plus discret de tous, pas
+// seulement des joueurs). → cartes { owner, tic: { kind: 'record' | 'favori', … } }
+export function pickRecords(members, everyone = members) {
   const cards = [];
   for (const rec of RECORDS) {
-    const ranked = members.filter(m => m.stats && rec.value(m.stats) != null)
+    const ranked = (rec.wholeGroup ? everyone : members).filter(m => m.stats && rec.value(m.stats) != null)
       .map(m => ({ name: m.name, s: m.stats, v: rec.value(m.stats) }))
       .sort((a, b) => (rec.low ? a.v - b.v : b.v - a.v));
     if (ranked.length < 2) continue;
     const [w, r] = ranked;
     const clear = rec.low ? w.v <= (rec.ratio || 0.75) * r.v : w.v >= 1.3 * r.v && w.v >= (rec.min || 0);
-    if (!clear || (rec.need && !rec.need(w.s))) continue;
+    if (!clear || (rec.need && !rec.need(w.s)) || !members.some(m => m.name === w.name)) continue;
     cards.push({ owner: w.name, tic: { kind: 'record', id: rec.id, text: rec.text, detail: rec.detail(w, r), uses: 0, others: 0 } });
   }
   // Emoji préféré : seulement s'il n'est celui de personne d'autre.

@@ -37,11 +37,13 @@ function varied(tics) {
 // Les manches tournent entre les membres (chacun autant que possible, jamais deux fois de suite),
 // en piochant d'abord dans leurs meilleurs tics, et en évitant ceux déjà joués lors des parties précédentes.
 // Avec l'option photos, chacun a aussi une ou deux questions « qui a envoyé cette photo ? ».
-function buildDeck(owners, total, used, withPhotos) {
+// extra : nom → records gagnés, glissés tôt dans la file de leur gagnant.
+function buildDeck(owners, total, used, withPhotos, extra) {
   const queues = owners.map(a => {
     const fresh = a.tics.filter(t => !used.has(ticId(a.name, t)));
     let list = varied(fresh.length ? fresh : a.tics.slice());
     list = [...shuffle(list.slice(0, 4)), ...shuffle(list.slice(4))];
+    (extra.get(a.name) || []).forEach((tic, i) => list.splice(1 + 2 * i, 0, tic));
     if (withPhotos && a.photos?.length) {
       const photos = shuffle(a.photos.filter(f => !used.has(a.name + '|' + f)).slice());
       const card = file => ({ kind: 'photo', text: 'cette photo', file, uses: a.photoCount || a.photos.length, others: 0, topOther: null, example: null });
@@ -155,19 +157,18 @@ export class Game {
   start() {
     this.options = this.candidates();
     const owners = this.options.map(n => this.member(n)).filter(a => a.tics.length);
-    // Records (« qui répond le plus vite ? »…) : environ une manche sur quatre, réparties dans la partie.
-    this.records = pickRecords(this.options.map(name => ({ name, stats: this.member(name).stats })));
+    // Records (« qui répond le plus vite ? »…) : environ une manche sur quatre, les vrais records avant
+    // les emojis préférés, et sans redire un emoji déjà dans les tics de son propriétaire.
+    this.records = pickRecords(this.options.map(name => ({ name, stats: this.member(name).stats })), this.analysis.authors)
+      .filter(c => c.tic.kind !== 'favori' || !this.member(c.owner).tics.some(t => t.text === c.tic.text));
     const fresh = this.records.filter(c => !this.used.has(ticId(c.owner, c.tic)));
-    const records = shuffle(fresh.length ? fresh : this.records.slice()).slice(0, Math.round(this.settings.rounds / 4));
-    this.deck = buildDeck(owners, this.settings.rounds - records.length, this.used, this.settings.photos);
-    records.forEach((card, i) => {
-      // Au plus près de sa place idéale, sans la même personne deux manches de suite.
-      const target = Math.min(this.deck.length, Math.round(((i + 0.5) * this.deck.length) / records.length) + i);
-      const fits = j => j >= 0 && j <= this.deck.length && this.deck[j - 1]?.owner !== card.owner && this.deck[j]?.owner !== card.owner;
-      let at = target;
-      for (let d = 1; !fits(at) && d <= this.deck.length; d++) at = fits(target - d) ? target - d : target + d;
-      this.deck.splice(fits(at) ? at : target, 0, card);
-    });
+    const pool = fresh.length ? fresh : this.records.slice();
+    const chosen = [...shuffle(pool.filter(c => c.tic.kind === 'record')), ...shuffle(pool.filter(c => c.tic.kind !== 'record'))]
+      .slice(0, Math.max(1, Math.round(this.settings.rounds / 4)));
+    const extra = new Map();
+    for (const c of chosen) extra.set(c.owner, [...(extra.get(c.owner) || []), c.tic]);
+    const deckOwners = [...owners, ...[...extra.keys()].filter(n => !owners.some(a => a.name === n)).map(n => ({ ...this.member(n), tics: [] }))];
+    this.deck = buildDeck(deckOwners, this.settings.rounds, this.used, this.settings.photos, extra);
     for (const p of this.players.values()) p.score = 0;
     this.index = 0;
     this.ask();
