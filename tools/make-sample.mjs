@@ -68,9 +68,11 @@ for (let d = 0; d < 130; d++) {
   const burst = chance(0.75) ? 6 + Math.floor(rnd() * 30) : 0;
   let minute = 9 * 60 + Math.floor(rnd() * 600);
   for (let i = 0; i < burst; i++) {
-    minute += 1 + Math.floor(rnd() * 6);
-    const p = who();
+    // Karim relance souvent la conversation du jour ; Max répond quasi instantanément.
+    const p = i === 0 && chance(0.5) ? PEOPLE[1] : who();
+    minute = Math.min(minute + (p.name === 'Max' ? 0 : 1 + Math.floor(rnd() * 8)), 23 * 60 + 59);
     let s = pick(BASE);
+    if (p.name === 'Inès' && chance(0.12)) s = [s, pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE)].join(', ') + ', bref je vous raconterai tout en détail';
     for (const t of p.tics) s = t(s);
     if (chance(0.5)) s = cap(s);
     lines.push({ day, minute, author: p.name, text: s });
@@ -88,6 +90,7 @@ for (let d = 0; d < 130; d++) {
     minute += 2;
     lines.push({ day, minute, author: 'Thomas Lefèvre', text: pick(['Le déménagement c\'est samedi', 'Il me faut encore des cartons', 'Qui peut aider pour le déménagement', 'J\'ai plus de cartons', 'Les cartons sont dans le camion']) });
   }
+  if (d % 3 === 0) lines.push({ day, minute: 60 + Math.floor(rnd() * 180), author: 'Thomas Lefèvre', text: cap(pick(BASE)) + ' mdrrr' });   // couche-tard
   if (d % 25 === 3) lines.push({ day, minute: minute + 3, author: SOPHIE, text: pick(['Coucou tout le monde', 'Je passe samedi', 'Merci pour hier']) });
   if (d === 12) lines.push({ day, minute: minute + 5, author: 'Max', text: 'Bon je résume pour samedi :\n- Julie les courses\n- Karim la voiture\n- moi le reste' });
 }

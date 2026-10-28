@@ -55,7 +55,7 @@ assert.equal(game.players.get('c').score, 0);
 const played = new Set(game.used);
 game.handle('h', { t: 'replay' });
 game.handle('h', { t: 'start' });
-assert.ok(game.deck.every(c => !played.has(c.owner + '|' + c.tic.text)), 'on rejoue avec d\'autres tics');
+assert.ok(game.deck.filter(c => !c.tic.id).every(c => !played.has(c.owner + '|' + (c.tic.file || c.tic.text))), 'on rejoue avec d\'autres tics');
 assert.equal(game.players.get('h').score, 0, 'scores remis à zéro');
 
 // Tout le monde a voté : il ne reste que 5 secondes, pendant lesquelles on peut encore changer d'avis.
@@ -79,7 +79,9 @@ const media = new Game(analyze(parseChat(exp.text, zipName), exp.files), 'MEDI',
 media.handle('h', { t: 'settings', settings: { rounds: 20, photos: true } });
 media.handle('h', { t: 'start' });
 const kinds = new Set(media.deck.map(c => c.tic.kind));
-for (const k of ['sticker', 'gif', 'habitude', 'photo', 'emoji']) assert.ok(kinds.has(k), `une manche de type ${k}`);
+for (const k of ['habitude', 'photo', 'record', 'favori']) assert.ok(kinds.has(k), `une manche de type ${k}`);
+assert.ok(kinds.has('sticker') || kinds.has('gif'), 'une manche sticker ou GIF');
+assert.ok(media.deck.every((c, i) => !i || c.owner !== media.deck[i - 1].owner), 'jamais deux fois de suite le même, records compris');
 for (let i = 0; i < media.deck.length; i++) {
   const q = media.view('b').round;
   assert.equal(q.answer, undefined);

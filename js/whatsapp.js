@@ -5,10 +5,11 @@
 // ainsi que leurs variantes (« à », virgule, AM/PM, dates à l'américaine).
 // Les médias deviennent des entrées à part : { author, kind, file, day }, où file est le nom
 // du fichier joint dans l'export avec médias (null dans un export sans médias).
+// timeline : messages et médias dans l'ordre, avec leur heure { author, t (minutes), hour, text }.
 
 const SP = '[ \\u00a0\\u202f]';
 const DATE = '(\\d{1,4})[/.\\-](\\d{1,2})[/.\\-](\\d{1,4})';
-const TIME = `\\d{1,2}[:.h]\\d{2}(?:[:.]\\d{2})?(?:${SP}?[AaPp]\\.?${SP}?[Mm]\\.?)?`;
+const TIME = `(\\d{1,2})[:.h](\\d{2})(?:[:.]\\d{2})?(?:${SP}?([AaPp])\\.?${SP}?[Mm]\\.?)?`;
 const SEP = `(?:,|${SP}à)?${SP}+`;
 const HEADER = new RegExp(
   `^(?:\\[${DATE}${SEP}${TIME}\\]${SP}*|${DATE}${SEP}${TIME}${SP}+[-–]${SP}+)`
@@ -72,12 +73,25 @@ export function parseChat(raw, fileName = '') {
     const author = rest.slice(0, colon).replace(MARKS, '').replace(/^~\s*/, '').trim();
     if (!author) continue;
     // iPhone : médias et messages système commencent par une marque invisible
-    current = { author, text, day: m[1] ? `${m[1]}-${m[2]}-${m[3]}` : `${m[4]}-${m[5]}-${m[6]}`, marked: /^[‎‏]/.test(text) };
+    const f = m[1] ? m.slice(1, 7) : m.slice(7, 13);   // jour/mois/année (dans un ordre à deviner), heure, minute, AM/PM
+    current = { author, text, f, day: `${f[0]}-${f[1]}-${f[2]}`, marked: /^[‎‏]/.test(text) };
     parsed.push(current);
   }
 
+  // Ordre de la date : jour/mois (France) sauf si un « mois » dépasse 12 ; année en premier si sur 4 chiffres.
+  const ymd = parsed.some(p => p.f[0].length === 4);
+  const mdy = !ymd && !parsed.some(p => +p.f[0] > 12) && parsed.some(p => +p.f[1] > 12);
+  const minutes = f => {
+    let [a, b, c, h, min, ap] = f;
+    const [y, mo, d] = ymd ? [+a, +b, +c] : mdy ? [+c, +a, +b] : [+c, +b, +a];
+    h = +h % 12 === 0 && ap ? 0 : +h;
+    if (ap && /p/i.test(ap)) h += 12;
+    return { t: Date.UTC(y < 100 ? 2000 + y : y, mo - 1, d, h, +min) / 60000, hour: h };
+  };
+
   const messages = [];
   const medias = [];
+  const timeline = [];
   const counts = new Map();
   for (const msg of parsed) {
     const text = msg.text.replace(MARKS, '').replace(/[  ]/g, ' ').replace(EDITED, '').trim();
@@ -88,9 +102,10 @@ export function parseChat(raw, fileName = '') {
       if (msg.marked || !text || SKIP.some(re => re.test(text))) continue;
       messages.push({ author: msg.author, text, day: msg.day });
     }
+    timeline.push({ author: msg.author, ...minutes(msg.f), text: media ? null : text });
     counts.set(msg.author, (counts.get(msg.author) || 0) + 1);
   }
 
   const authors = [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  return { title: chatTitle(fileName), messages, medias, authors };
+  return { title: chatTitle(fileName), messages, medias, timeline, authors };
 }

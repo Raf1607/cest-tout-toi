@@ -298,7 +298,7 @@ function lobbyScreen() {
 const ASK = {
   expr: 'Qui dit tout le temps…', mot: 'Qui dit tout le temps…', emoji: 'Qui envoie tout le temps…', ponct: 'Qui écrit tout le temps…',
   sticker: 'Qui envoie tout le temps ce sticker ?', gif: 'Qui envoie tout le temps ce GIF ?', photo: 'Qui a envoyé cette photo ?',
-  habitude: 'Qui envoie le plus…',
+  habitude: 'Qui envoie le plus…', record: 'Qui…', favori: 'Qui a cet emoji préféré ?',
 };
 
 function bubble(r) {
@@ -310,12 +310,15 @@ function bubble(r) {
     return `<div class="bubble media ${r.kind}">${inner}</div>`;
   }
   if (r.kind === 'habitude') return `<div class="bubble habitude">de ${esc(r.text)}&nbsp;?</div>`;
+  if (r.kind === 'record') return `<div class="bubble record">${esc(r.text)}&nbsp;?</div>`;
+  if (r.kind === 'favori') return `<div class="bubble emoji">${esc(r.text)}</div>`;
   return `<div class="bubble ${r.kind}">${r.kind === 'expr' || r.kind === 'mot' ? `«&nbsp;${esc(r.text)}&nbsp;»` : esc(r.text)}</div>`;
 }
 
 function statLine(r) {
   const others = r.others === 0 ? "Personne d'autre, jamais."
     : `Les autres : ${fmt(r.others)} fois en tout${r.topOther && r.others > r.topOther.uses ? `, dont ${fmt(r.topOther.uses)} pour ${esc(r.topOther.name)}` : r.topOther ? ` (${esc(r.topOther.name)})` : ''}.`;
+  if (r.detail) return esc(r.detail);
   if (r.kind === 'photo') return `Une de ses ${fmt(r.uses)} photos.`;
   if (r.kind === 'sticker' || r.kind === 'gif') return `Envoyé <b>${fmt(r.uses)}</b> fois. ${others}`;
   if (r.kind === 'habitude') return `<b>${fmt(r.uses)}</b> ${esc(r.text)} sur ses ${fmt(r.ownerMessages)} messages. ${others}`;

@@ -17,6 +17,8 @@
 // dans un export sans médias) et, dans un export avec médias, le sticker ou le GIF fétiche
 // de chacun (les fichiers identiques sont regroupés grâce à leur taille et leur CRC).
 
+import { memberStats } from './records.js';
+
 const MAX_MESSAGES = 60000;   // au-delà, on ne garde que les plus récents
 const MIN_MESSAGES = 20;      // en dessous, un membre n'est pas analysé
 const MIN_USES = 3;
@@ -175,7 +177,7 @@ export function analyze(chat, files = new Map()) {
   let result;
   for (let level = 0; level < LEVELS.length; level++) {
     result = analyzeAt(chat, files, level);
-    const n = result.authors.length;
+    const n = result.authors.filter(a => a.messages >= MIN_MESSAGES).length;
     const withTics = result.authors.filter(a => a.tics.length).length;
     if (result.authors.filter(a => a.tics.length >= 3).length >= Math.min(2, n) && withTics >= Math.ceil(n / 2)) break;
   }
@@ -193,6 +195,7 @@ function analyzeAt(chat, files, level) {
   const perAll = Int32Array.from(perAuthor);     // messages écrits + médias
   for (const m of medias) perAll[index.get(m.author)]++;
   const M = messages.length;
+  const records = memberStats(chat);
   const active = perAll.filter(n => n >= MIN_MESSAGES).length;
   const { lift, z, habit } = LEVELS[level];
   const share = Math.min(0.34, 2 / Math.max(active, 1));   // dans un gros groupe, les autres réunis pèsent lourd
@@ -360,8 +363,8 @@ function analyzeAt(chat, files, level) {
         ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of })),
       photos: shuffle(photos[a]).slice(0, 40),
       photoCount: photos[a].length,
+      stats: records.get(name) || null,
     }))
-    .filter(a => a.messages >= MIN_MESSAGES)
     .sort((x, y) => y.messages - x.messages);
 
   return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors };

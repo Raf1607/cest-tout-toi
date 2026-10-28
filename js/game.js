@@ -1,6 +1,8 @@
 // La partie, telle que la tient le téléphone de l'hôte. Tout l'état vit ici ; chaque
 // téléphone reçoit seulement ce qu'il doit afficher (jamais la réponse avant la révélation).
 
+import { pickRecords } from './records.js';
+
 export const ROUNDS = [6, 10, 15, 20];
 export const SECONDS = [15, 25, 40];
 const LAST_CALL = 5000;   // quand tout le monde a voté, il reste ce temps pour changer d'avis
@@ -10,7 +12,7 @@ function shuffle(a) {
   return a;
 }
 
-const ticId = (owner, t) => owner + '|' + (t.file || t.text);
+const ticId = (owner, t) => owner + '|' + (t.id || t.file || t.text);
 const FAMILY = { expr: 'mots', mot: 'mots', ponct: 'mots', emoji: 'emoji', sticker: 'media', gif: 'media', habitude: 'habitude' };
 
 // Pour varier les questions, on alterne les familles de tics de chacun (mots, emoji, sticker/GIF,
@@ -81,6 +83,7 @@ export class Game {
     this.deck = [];
     this.options = [];
     this.round = null;
+    this.records = [];
     this.timer = null;
     this.join(hostId);
     this.onChange = onChange;
@@ -152,7 +155,19 @@ export class Game {
   start() {
     this.options = this.candidates();
     const owners = this.options.map(n => this.member(n)).filter(a => a.tics.length);
-    this.deck = buildDeck(owners, this.settings.rounds, this.used, this.settings.photos);
+    // Records (« qui répond le plus vite ? »…) : environ une manche sur quatre, réparties dans la partie.
+    this.records = pickRecords(this.options.map(name => ({ name, stats: this.member(name).stats })));
+    const fresh = this.records.filter(c => !this.used.has(ticId(c.owner, c.tic)));
+    const records = shuffle(fresh.length ? fresh : this.records.slice()).slice(0, Math.round(this.settings.rounds / 4));
+    this.deck = buildDeck(owners, this.settings.rounds - records.length, this.used, this.settings.photos);
+    records.forEach((card, i) => {
+      // Au plus près de sa place idéale, sans la même personne deux manches de suite.
+      const target = Math.min(this.deck.length, Math.round(((i + 0.5) * this.deck.length) / records.length) + i);
+      const fits = j => j >= 0 && j <= this.deck.length && this.deck[j - 1]?.owner !== card.owner && this.deck[j]?.owner !== card.owner;
+      let at = target;
+      for (let d = 1; !fits(at) && d <= this.deck.length; d++) at = fits(target - d) ? target - d : target + d;
+      this.deck.splice(fits(at) ? at : target, 0, card);
+    });
     for (const p of this.players.values()) p.score = 0;
     this.index = 0;
     this.ask();
@@ -219,6 +234,7 @@ export class Game {
     if (this.phase === 'question' || this.phase === 'reveal') {
       const { n, card, votes, endsAt } = this.round;
       v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, of: card.tic.of || null, media: mediaOf(card.tic), options: this.options };
+      if (this.phase === 'reveal' && card.tic.detail) v.round.detail = card.tic.detail;
       if (this.phase === 'question') {
         Object.assign(v.round, { remaining: Math.max(0, endsAt - Date.now()), seconds: this.settings.seconds, votes, allVoted: !!this.round.allVoted });
       } else {
@@ -229,7 +245,10 @@ export class Game {
     if (this.phase === 'end') {
       v.portraits = this.options.map(name => ({
         name,
-        tics: this.member(name).tics.filter(t => !t.file).slice(0, 4).map(t => (t.kind === 'habitude' ? `plein de ${t.text}` : t.text)),
+        tics: [
+          ...this.records.filter(c => c.owner === name && c.tic.kind === 'record').map(c => c.tic.text),
+          ...this.member(name).tics.filter(t => !t.file).slice(0, 4).map(t => (t.kind === 'habitude' ? `plein de ${t.text}` : t.text)),
+        ],
       }));
     }
     return v;
