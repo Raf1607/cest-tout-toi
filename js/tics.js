@@ -392,6 +392,7 @@ function analyzeAt(chat, files, level) {
   // de ses tournures (comptées une fois par famille : « du coup » et « Du coup… » ne font qu'une).
   const weights = candidates.map(list => new Map(list.filter(t => !/^[#@]/.test(t.key)).map(t => [t.key, Math.log2(Math.min(t.lift, 64))])));
   const typical = names.map(() => []);
+  const official = picked.map(list => new Map(list.map(t => [t.key, t.text])));   // ses tics retenus, pour la révélation
   const seenText = new Set();
   messages.forEach((m, i) => {
     const a = index.get(m.author), w = weights[a];
@@ -400,14 +401,24 @@ function analyzeAt(chat, files, level) {
     if (seenText.has(norm)) return;
     seenText.add(norm);
     const groups = new Map();   // famille → [poids, tournure]
+    const shown = [];
     grams(m.text, tokenized[i], key => {
+      if (official[a].has(key) && !shown.includes(official[a].get(key))) shown.push(official[a].get(key));
       if (!w.has(key)) return;
       const g = contentWords(key).join(' ');
       if (!groups.has(g) || groups.get(g)[0] < w.get(key)) groups.set(g, [w.get(key), bare(key)]);
     });
+    // On garde les tournures de la plus marquante à la moins marquante, chacune devant apporter un mot
+    // nouveau (« ahahah du coup » n'ajoute rien à « ahahah » et « du coup »).
+    const covered = new Set();
+    for (const [g] of [...groups].sort((x, y) => y[1][0] - x[1][0])) {
+      const words = g.split(' ');
+      if (words.every(w => covered.has(w))) groups.delete(g);
+      else words.forEach(w => covered.add(w));
+    }
     if (groups.size < 2) return;
     const score = [...groups.values()].reduce((x, [v]) => x + v, 0) + Math.random();
-    typical[a].push({ text: m.text, score, groups: [...groups.keys()].sort().join('|'), found: [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
+    typical[a].push({ text: m.text, score, groups: [...groups.keys()].sort().join('|'), found: shown.length ? shown : [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
   });
   typical.forEach((list, a) => {
     list.sort((x, y) => y.score - x.score);
