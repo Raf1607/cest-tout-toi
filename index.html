@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#16131d">
+<meta name="apple-mobile-web-app-title" content="Who is bro ?">
 <title>Who is bro ?</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='8' width='56' height='40' rx='14' fill='%23ffcf3f'/%3E%3Cpath d='M16 46 12 60 28 47z' fill='%23ffcf3f'/%3E%3Ctext x='32' y='37' font-size='26' font-family='Arial' font-weight='bold' text-anchor='middle' fill='%2316131d'%3E%C2%AB%C2%BB%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -193,6 +194,17 @@
 <script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.57/dist/zip-no-worker.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js"></script>
-<script type="module" src="js/app.js"></script>
+<!-- Version des scripts du jeu : changée à chaque publication (node tools/version.mjs) pour que
+     les téléphones ne gardent pas une ancienne version en cache. -->
+<script type="importmap">
+{ "imports": {
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610281403",
+  "./js/tics.js": "./js/tics.js?v=202610281403",
+  "./js/game.js": "./js/game.js?v=202610281403",
+  "./js/net.js": "./js/net.js?v=202610281403",
+  "./js/media.js": "./js/media.js?v=202610281403"
+} }
+</script>
+<script type="module" src="js/app.js?v=202610281403"></script>
 </body>
 </html>

@@ -37,6 +37,7 @@ Publier la nouvelle version (avec le compte GitHub de Raph ; le site se met à j
 
 ```bash
 gh auth switch --user Raf1607
+node tools/version.mjs   # nouvelle version des scripts : les téléphones ne gardent pas l'ancienne en cache
 git add -A && git commit -m "Ce qui a changé" && git push
 ```
 
