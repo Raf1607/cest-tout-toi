@@ -17,7 +17,7 @@
 // dans un export sans médias) et, dans un export avec médias, le sticker ou le GIF fétiche
 // de chacun (les fichiers identiques sont regroupés grâce à leur taille et leur CRC).
 
-import { memberStats } from './records.js';
+import { memberStats, bestPhotos } from './records.js';
 
 const MAX_MESSAGES = 60000;   // au-delà, on ne garde que les plus récents
 const MIN_MESSAGES = 20;      // en dessous, un membre n'est pas analysé
@@ -367,5 +367,6 @@ function analyzeAt(chat, files, level) {
     }))
     .sort((x, y) => y.messages - x.messages);
 
-  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors };
+  const slideshow = files.size ? bestPhotos(chat, files) : [];
+  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors, slideshow };
 }

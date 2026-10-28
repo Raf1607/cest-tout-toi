@@ -5,7 +5,7 @@
 // ainsi que leurs variantes (« à », virgule, AM/PM, dates à l'américaine).
 // Les médias deviennent des entrées à part : { author, kind, file, day }, où file est le nom
 // du fichier joint dans l'export avec médias (null dans un export sans médias).
-// timeline : messages et médias dans l'ordre, avec leur heure { author, t (minutes), hour, text }.
+// timeline : messages et médias dans l'ordre, avec leur heure { author, t (minutes), hour, text, media, file }.
 
 const SP = '[ \\u00a0\\u202f]';
 const DATE = '(\\d{1,4})[/.\\-](\\d{1,2})[/.\\-](\\d{1,4})';
@@ -102,7 +102,7 @@ export function parseChat(raw, fileName = '') {
       if (msg.marked || !text || SKIP.some(re => re.test(text))) continue;
       messages.push({ author: msg.author, text, day: msg.day });
     }
-    timeline.push({ author: msg.author, ...minutes(msg.f), text: media ? null : text });
+    timeline.push({ author: msg.author, ...minutes(msg.f), text: media ? null : text, media: media?.kind || null, file: media?.file || null });
     counts.set(msg.author, (counts.get(msg.author) || 0) + 1);
   }
 

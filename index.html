@@ -137,6 +137,18 @@
   .bubble.media .wait { font: 600 15px/1.4 system-ui, sans-serif; color: var(--muted); }
   .bubble.habitude { font-size: 40px; }
   .bubble.record { font-size: 30px; }
+  .slideshow { position: relative; height: min(60vh, 520px); border-radius: 20px; overflow: hidden; background: var(--surface); display: flex; align-items: center; justify-content: center; }
+  .slide { position: absolute; inset: 0; margin: 0; animation: fade .7s ease-out; }
+  .slide img { width: 100%; height: 100%; object-fit: cover; animation: kenburns 4.2s ease-out forwards; }
+  .slide figcaption { position: absolute; left: 12px; top: 12px; background: rgba(22, 19, 29, .72); color: var(--ink); font-size: 14px; font-weight: 600; padding: 5px 10px; border-radius: 99px; }
+  .reacts { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 0 12px; }
+  .reacts span { font-size: 34px; line-height: 1; background: rgba(22, 19, 29, .62); border-radius: 99px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 4px;
+    opacity: 0; animation: react .6s cubic-bezier(.2, 1.5, .4, 1) forwards, bob 2.4s ease-in-out infinite; animation-delay: calc(.5s + var(--i) * .18s), calc(1.1s + var(--i) * .18s); }
+  .reacts small { font: 700 13px system-ui, sans-serif; color: var(--ink); }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.12) translate(-2%, -2%); } }
+  @keyframes react { from { opacity: 0; transform: translateY(24px) scale(.4); } to { opacity: 1; transform: none; } }
+  @keyframes bob { 50% { transform: translateY(-5px); } }
 
   .options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .options button { flex-direction: column; gap: 6px; padding: 14px 10px; font-size: 17px; min-height: 76px; overflow-wrap: anywhere; }
@@ -185,7 +197,7 @@
   .portrait span { background: var(--bubble); color: var(--bubble-ink); border-radius: 12px 12px 12px 4px; padding: 4px 10px; font-weight: 600; font-size: 15px; }
 
   @media (min-width: 520px) { #app { padding-top: 32px; } }
-  @media (prefers-reduced-motion: reduce) { .bubble, .answer { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .bubble, .answer, .slide, .slide img { animation: none; } .reacts span { animation: none; opacity: 1; } }
 </style>
 </head>
 <body>
@@ -199,13 +211,13 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202610281954",
-  "./js/tics.js": "./js/tics.js?v=202610281954",
-  "./js/game.js": "./js/game.js?v=202610281954",
-  "./js/net.js": "./js/net.js?v=202610281954",
-  "./js/media.js": "./js/media.js?v=202610281954"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610282009",
+  "./js/tics.js": "./js/tics.js?v=202610282009",
+  "./js/game.js": "./js/game.js?v=202610282009",
+  "./js/net.js": "./js/net.js?v=202610282009",
+  "./js/media.js": "./js/media.js?v=202610282009"
 } }
 </script>
-<script type="module" src="js/app.js?v=202610281954"></script>
+<script type="module" src="js/app.js?v=202610282009"></script>
 </body>
 </html>

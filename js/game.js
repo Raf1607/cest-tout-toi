@@ -79,7 +79,7 @@ export class Game {
     this.code = code;
     this.hostId = hostId;
     this.players = new Map();       // id → { id, author, score, connected, order }
-    this.settings = { rounds: 10, seconds: 25, absent: false, photos: false };
+    this.settings = { rounds: 10, seconds: 25, absent: false, photos: false, slideshow: true };
     this.phase = 'lobby';
     this.used = new Set();
     this.deck = [];
@@ -129,6 +129,7 @@ export class Game {
       if (SECONDS.includes(s.seconds)) this.settings.seconds = s.seconds;
       if (typeof s.absent === 'boolean') this.settings.absent = s.absent;
       if (typeof s.photos === 'boolean') this.settings.photos = s.photos;
+      if (typeof s.slideshow === 'boolean') this.settings.slideshow = s.slideshow;
     } else if (msg.t === 'start' && host && this.phase === 'lobby') {
       if (this.canStart().ok) return this.start();
     } else if (msg.t === 'next' && host && this.phase === 'reveal') {
@@ -218,6 +219,12 @@ export class Game {
 
   changed() { this.onChange?.(); }
 
+  // Diaporama de fin : les photos les plus commentées du groupe, si l'hôte l'a laissé activé.
+  slides() {
+    if (!this.settings.slideshow) return [];
+    return (this.analysis.slideshow || []).map(p => ({ id: p.file, author: p.author, emojis: p.emojis }));
+  }
+
   // Ce que voit le joueur `id`.
   view(id) {
     const players = [...this.players.values()].sort((a, b) => a.order - b.order).map(p => ({
@@ -230,6 +237,7 @@ export class Game {
       v.members = this.analysis.authors.map(a => ({ name: a.name, messages: a.messages, tics: a.tics.length }));
       v.absentCount = this.analysis.authors.filter(a => a.tics.length && !players.some(p => p.author === a.name)).length;
       v.photoCount = this.analysis.authors.reduce((n, a) => n + (a.photos?.length || 0), 0);
+      v.slideCount = this.analysis.slideshow?.length || 0;
       v.canStart = this.canStart();
     }
     if (this.phase === 'question' || this.phase === 'reveal') {
@@ -244,6 +252,7 @@ export class Game {
       }
     }
     if (this.phase === 'end') {
+      v.slides = this.slides();
       v.portraits = this.options.map(name => ({
         name,
         tics: [

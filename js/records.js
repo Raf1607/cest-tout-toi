@@ -105,3 +105,31 @@ export function pickRecords(members, everyone = members) {
   }
   return cards;
 }
+
+// Diaporama de fin (export avec médias) : les photos qui ont le plus fait réagir le groupe, avec les
+// emojis envoyés juste après par les autres (dans les 15 minutes, sur une douzaine de messages).
+const REACTION_WINDOW = 15;
+const SLIDE_MAX_BYTES = 20 * 1024 * 1024;
+
+export function bestPhotos(chat, files, max = 10) {
+  const timeline = chat.timeline || [];
+  const photos = [];
+  timeline.forEach((e, i) => {
+    const f = e.media === 'photo' && e.file && files.get(e.file);
+    if (!f || f.size > SLIDE_MAX_BYTES) return;
+    const counts = new Map();
+    let replies = 0;
+    for (let j = i + 1; j < timeline.length && j <= i + 12; j++) {
+      const r = timeline[j];
+      if (r.t - e.t > REACTION_WINDOW) break;
+      if (r.author === e.author || !r.text) continue;
+      replies++;
+      for (const emoji of r.text.match(EMOJI) || []) counts.set(emoji, (counts.get(emoji) || 0) + 1);
+    }
+    const emojis = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([e, n]) => ({ e, n }));
+    const reactions = [...counts.values()].reduce((a, b) => a + b, 0);
+    photos.push({ file: e.file, author: e.author, emojis, score: 2 * reactions + replies + Math.random() });
+  });
+  return photos.sort((a, b) => b.score - a.score).slice(0, max).map(({ file, author, emojis }) => ({ file, author, emojis }));
+}
+

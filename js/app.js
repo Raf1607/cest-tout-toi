@@ -53,6 +53,10 @@ const nameOf = p => p.author || 'Nouveau joueur';
 // Stickers, GIF et photos à montrer : id (nom du fichier dans l'export) → adresse locale de l'image.
 const mediaCache = new Map();
 function mediaArrived(id) {
+  if (view?.phase === 'end') {
+    if (!$app.querySelector('[data-slides] .slide')) mountSlides();   // première photo arrivée
+    return;
+  }
   if (view?.round?.media?.id !== id) return;
   $app.dataset.key = '';   // redessine l'écran avec l'image
   render();
@@ -99,7 +103,11 @@ async function host(getFile) {
         console.warn('Média illisible', id, err);
       }
     }
-    function shareRound() {
+    async function shareRound() {
+      if (game.phase === 'end') {
+        for (const slide of game.slides()) await share({ file: slide.id, kind: 'photo' });   // une à une, pour ne pas saturer
+        return;
+      }
       if (game.phase !== 'question' && game.phase !== 'reveal') return;
       share(game.round.card.tic);
       if (game.phase === 'reveal') share(game.deck[game.index + 1]?.tic);
@@ -114,7 +122,8 @@ async function host(getFile) {
           if (old && old !== conn) old.close();
           game.join(pid);
           const current = game.round && shared.get(game.round.card.tic.file);
-          if (current && game.phase !== 'lobby') sendChunks(conn, current);
+          if (current && game.phase !== 'lobby' && game.phase !== 'end') sendChunks(conn, current);
+          if (game.phase === 'end') for (const slide of game.slides()) if (shared.get(slide.id)) sendChunks(conn, shared.get(slide.id));
         } else if (pid) game.handle(pid, msg);
       });
       conn.on('close', () => { if (pid && conns.get(pid) === conn) { conns.delete(pid); game.leave(pid); } });
@@ -190,6 +199,8 @@ function render() {
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
   $app.dataset.key = key;
   if (key) patchQuestion();
+  if (ui.screen === 'game' && view.phase === 'end') mountSlides();
+  else { clearInterval(slideTimer); slideTimer = null; }
   tick();
 }
 
@@ -287,6 +298,11 @@ function lobbyScreen() {
       <label class="setting toggle">
         <span>Questions sur les photos <small>(n'importe quelle photo du groupe peut s'afficher)</small></span>
         <input type="checkbox" data-input="photos" ${v.settings.photos ? 'checked' : ''}>
+      </label>` : ''}
+      ${v.slideCount ? `
+      <label class="setting toggle">
+        <span>Diaporama des photos à la fin <small>(les ${v.slideCount} photos qui ont le plus fait réagir le groupe)</small></span>
+        <input type="checkbox" data-input="slideshow" ${v.settings.slideshow ? 'checked' : ''}>
       </label>` : ''}
       <div class="actions">
         <button class="primary big" data-act="start" ${v.canStart.ok ? '' : 'disabled'}>Lancer la partie</button>
@@ -394,6 +410,7 @@ function endScreen() {
   const ranking = [...v.players].filter(p => p.author).sort((a, b) => b.score - a.score);
   const rank = p => 1 + ranking.filter(q => q.score > p.score).length;   // ex æquo : même rang
   return `
+    ${v.slides?.length ? '<h2>Les moments du groupe</h2><section class="slideshow" data-slides></section>' : ''}
     <header class="brand small"><h1>Classement</h1></header>
     <ol class="ranking">${ranking.map(p => `
       <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(p.author)}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
@@ -401,6 +418,29 @@ function endScreen() {
     <div class="portraits">${v.portraits.map(x => `
       <div class="portrait"><b>${esc(x.name)}</b><p>${x.tics.map(t => `<span>${esc(t)}</span>`).join('')}</p></div>`).join('')}</div>
     ${v.host ? '<div class="actions"><button class="primary big" data-act="replay">Rejouer</button></div>' : `<p class="wait">L'hôte peut relancer une partie.</p>`}`;
+}
+
+// Diaporama de fin : une photo toutes les 4 secondes, avec les emojis envoyés juste après.
+// Chaque téléphone le fait défiler à son rythme ; les photos s'ajoutent à mesure qu'elles arrivent.
+let slideIndex = 0, slideTimer = null;
+function mountSlides() {
+  clearInterval(slideTimer);
+  slideTimer = null;
+  const box = $app.querySelector('[data-slides]');
+  if (!box) return;
+  const next = () => {
+    const ready = view.slides.filter(s => mediaCache.has(s.id));
+    if (!ready.length) { box.innerHTML = '<p class="wait">Chargement des photos…</p>'; return; }
+    const s = ready[slideIndex++ % ready.length];
+    box.innerHTML = `<figure class="slide">
+      <img src="${mediaCache.get(s.id)}" alt="">
+      <figcaption>Photo de ${esc(s.author)}</figcaption>
+      ${s.emojis.length ? `<div class="reacts">${s.emojis.map((x, i) =>
+        `<span style="--i:${i}">${esc(x.e)}${x.n > 1 ? `<small>×${x.n}</small>` : ''}</span>`).join('')}</div>` : ''}
+    </figure>`;
+  };
+  next();
+  slideTimer = setInterval(next, 4000);
 }
 
 // Compte à rebours : recalculé localement entre deux messages de l'hôte.
@@ -419,8 +459,11 @@ setInterval(tick, 200);
 // muette en boucle (cas de la page servie en http sur le réseau local). Il faut un geste
 // de l'utilisateur pour l'activer : on le fait au premier toucher.
 const noSleep = typeof NoSleep === 'function' ? new NoSleep() : null;
+let noSleepTried = false;
 document.addEventListener('click', () => {
-  if (noSleep && !noSleep.isEnabled) noSleep.enable().catch(() => { /* refusé par le navigateur */ });
+  if (!noSleep || noSleep.isEnabled || noSleepTried) return;
+  noSleepTried = true;
+  noSleep.enable().then(() => { noSleepTried = false; }, () => { /* refusé par le navigateur : on n'insiste pas */ });
 }, true);
 
 // ——— Événements ———
@@ -451,6 +494,7 @@ $app.addEventListener('change', e => {
   if (input === 'file' && e.target.files[0]) { const file = e.target.files[0]; host(async () => file); }
   if (input === 'absent') send({ t: 'settings', settings: { absent: e.target.checked } });
   if (input === 'photos') send({ t: 'settings', settings: { photos: e.target.checked } });
+  if (input === 'slideshow') send({ t: 'settings', settings: { slideshow: e.target.checked } });
 });
 
 $app.addEventListener('submit', e => {
