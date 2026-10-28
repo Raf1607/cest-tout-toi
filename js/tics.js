@@ -5,10 +5,12 @@
 // Pour chaque membre a et chaque tournure g :
 //   taux(a)   = (messages de a contenant g + K·p) / (messages de a + K)
 //               où p est le taux global de g : un petit bavard est ramené vers la moyenne
-//   écart     = taux(a) / plus fort taux(b) parmi les autres membres
+//   écart     = taux(a) / taux de tous les autres réunis
 //   score     = log2(écart) × log2(1 + utilisations par a)
-// On exige un écart d'au moins 2,5 qui ne soit pas dû au hasard (test de deux proportions),
-// et on écarte les tournures concentrées sur une seule conversation (un sujet, pas un tic),
+// On exige un écart d'au moins 2,5, et que a devance nettement chacun des autres (test de deux
+// proportions contre le deuxième : un petit bavard peut avoir un taux élevé par hasard).
+// Si ça laisse trop peu de tics (gros groupe, tics peu marqués), on assouplit ces seuils.
+// On écarte les tournures concentrées sur une seule conversation (un sujet, pas un tic),
 // les prénoms et les noms propres.
 //
 // Les médias suivent la même règle : « qui envoie le plus de stickers » (habitudes, même
@@ -20,11 +22,14 @@ const MIN_MESSAGES = 20;      // en dessous, un membre n'est pas analysé
 const MIN_USES = 3;
 const MAX_GRAM = 4;
 const K = 30;
-const MIN_LIFT = 2.5;
-const MIN_SHARE = 0.34;
-const MIN_Z = 2.5;
 const MAX_TICS = 12;
-const MIN_LIFT_HABIT = 1.6;            // « qui envoie le plus de… » : être nettement en tête suffit
+// Du plus exigeant au plus souple ; lift : écart minimal, z : avance minimale sur le deuxième,
+// habit : écart minimal pour « qui envoie le plus de… » (être nettement en tête suffit).
+const LEVELS = [
+  { lift: 2.5, z: 2.5, habit: 1.6 },
+  { lift: 2, z: 2, habit: 1.4 },
+  { lift: 1.6, z: 1.5, habit: 1.25 },
+];
 const MAX_MEDIA_BYTES = 3 * 1024 * 1024; // un sticker ou un GIF plus lourd ne sera pas envoyé aux joueurs
 const HABITS = { sticker: 'stickers', gif: 'GIF', photo: 'photos', video: 'vidéos', vocal: 'vocaux', media: 'médias' };
 
@@ -138,17 +143,19 @@ function zScore(c1, n1, c2, n2) {
   return se ? (c1 / n1 - c2 / n2) / se : 0;
 }
 
-// Le membre a s'approprie-t-il cette tournure ? c : utilisations par membre, totals : messages par membre.
-function owned(c, totals, a, minLift) {
+// Le membre a s'approprie-t-il cette tournure ? c : utilisations par membre, totals : messages par membre,
+// rule : { lift, z, share } (share : part minimale des utilisations qui sont les siennes).
+function owned(c, totals, a, rule) {
   let C = 0, M = 0;
   for (let b = 0; b < c.length; b++) { C += c[b]; M += totals[b]; }
   const p = C / M;
   const rate = b => (c[b] + K * p) / (totals[b] + K);
-  let best = 0, top = -1;
-  for (let b = 0; b < c.length; b++) if (b !== a && totals[b] >= MIN_MESSAGES && rate(b) > best) { best = rate(b); top = b; }
-  const lift = best ? rate(a) / best : Infinity;
-  if (lift < minLift || c[a] / C < MIN_SHARE) return null;
-  if (top >= 0 && zScore(c[a], totals[a], c[top], totals[top]) < MIN_Z) return null;   // écart dû au hasard
+  const rest = (C - c[a] + K * p) / (M - totals[a] + K);   // tous les autres réunis
+  const lift = rest ? rate(a) / rest : Infinity;
+  if (lift < rule.lift || c[a] / C < rule.share) return null;
+  let top = -1;
+  for (let b = 0; b < c.length; b++) if (b !== a && totals[b] >= MIN_MESSAGES && (top < 0 || rate(b) > rate(top))) top = b;
+  if (top >= 0 && (rate(top) >= rate(a) || zScore(c[a], totals[a], c[top], totals[top]) < rule.z)) return null;
   let other = -1;
   for (let b = 0; b < c.length; b++) if (b !== a && c[b] && (other < 0 || c[b] > c[other])) other = b;
   return { lift: Math.min(lift, 99), others: C - c[a], other };
@@ -162,7 +169,20 @@ function shuffle(a) {
 }
 
 // files (export avec médias) : nom de fichier → { key, size }, où key identifie le contenu.
+// On commence par les seuils les plus exigeants, et on les assouplit tant que trop peu de
+// membres ont des tics (au moins deux avec 3 tics, et la moitié des membres avec au moins un).
 export function analyze(chat, files = new Map()) {
+  let result;
+  for (let level = 0; level < LEVELS.length; level++) {
+    result = analyzeAt(chat, files, level);
+    const n = result.authors.length;
+    const withTics = result.authors.filter(a => a.tics.length).length;
+    if (result.authors.filter(a => a.tics.length >= 3).length >= Math.min(2, n) && withTics >= Math.ceil(n / 2)) break;
+  }
+  return result;
+}
+
+function analyzeAt(chat, files, level) {
   const messages = chat.messages.slice(-MAX_MESSAGES);
   const medias = chat.medias || [];
   const names = [...new Set([...messages, ...medias].map(m => m.author))];
@@ -173,6 +193,10 @@ export function analyze(chat, files = new Map()) {
   const perAll = Int32Array.from(perAuthor);     // messages écrits + médias
   for (const m of medias) perAll[index.get(m.author)]++;
   const M = messages.length;
+  const active = perAll.filter(n => n >= MIN_MESSAGES).length;
+  const { lift, z, habit } = LEVELS[level];
+  const share = Math.min(0.34, 2 / Math.max(active, 1));   // dans un gros groupe, les autres réunis pèsent lourd
+  const rule = { lift, z, share }, habitRule = { lift: habit, z, share };
 
   // Une tournure doit revenir dans plusieurs conversations : on compte les jours distincts,
   // ou des tranches de la discussion si elle tient en quelques jours.
@@ -223,7 +247,7 @@ export function analyze(chat, files = new Map()) {
     for (let a = 0; a < A; a++) {
       const c = st.c[a];
       if (c < MIN_USES || perAuthor[a] < MIN_MESSAGES || !spreadOk(st.spread[a], c)) continue;
-      const own = owned(st.c, perAuthor, a, MIN_LIFT);
+      const own = owned(st.c, perAuthor, a, rule);
       if (!own) continue;
       let boost = known.has(key) ? 1.3 : 1;
       if (kind === 'expr' && words.length <= 3) boost *= 1.2;
@@ -253,7 +277,7 @@ export function analyze(chat, files = new Map()) {
   for (const [kind, st] of byKind) {
     for (let a = 0; a < A; a++) {
       if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
-      const own = owned(st.c, perAll, a, MIN_LIFT_HABIT);
+      const own = owned(st.c, perAll, a, habitRule);
       if (own) candidates[a].push({ ...candidate('#' + kind, 'habitude', st.c, a, own), text: HABITS[kind], of: kind });
     }
   }
@@ -278,7 +302,7 @@ export function analyze(chat, files = new Map()) {
     if (!st.file) continue;
     for (let a = 0; a < A; a++) {
       if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
-      const own = owned(st.c, perAll, a, MIN_LIFT);
+      const own = owned(st.c, perAll, a, rule);
       if (own) candidates[a].push({ ...candidate(key, st.kind, st.c, a, own, 1.3), text: st.kind === 'gif' ? 'ce GIF' : 'ce sticker', file: st.file });
     }
   }
@@ -340,5 +364,5 @@ export function analyze(chat, files = new Map()) {
     .filter(a => a.messages >= MIN_MESSAGES)
     .sort((x, y) => y.messages - x.messages);
 
-  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, authors };
+  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors };
 }

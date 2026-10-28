@@ -71,8 +71,12 @@ async function host(getFile) {
     await new Promise(r => setTimeout(r, 50));
     const analysis = analyze(chat, files);
     analysis.title ||= 'la discussion';
-    if (analysis.authors.filter(a => a.tics.length).length < 2) {
-      throw new Error('Pas assez de tics trouvés : il faut au moins deux membres bavards dans la discussion.');
+    const withTics = analysis.authors.filter(a => a.tics.length);
+    if (withTics.length < 2) {
+      // Les chiffres aident à comprendre : export mal lu, ou groupe où personne ne se distingue.
+      throw new Error(`Pas assez de tics trouvés pour jouer : ${fmt(chat.messages.length)} messages lus, `
+        + `${analysis.authors.length} membres avec au moins 20 messages, ${withTics.length} avec des tics `
+        + `(${withTics.map(a => a.name).join(', ') || 'aucun'}).`);
     }
     setUi({ busy: 'Création de la partie…' });
     const conns = new Map();
