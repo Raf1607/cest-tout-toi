@@ -182,7 +182,12 @@
   .votes li.ok .vote { color: var(--good); }
   .votes li.ko .vote { color: var(--bad); text-decoration: line-through; }
   .votes .pts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-  .votes .pts i { font-style: normal; font-weight: 700; font-size: 13px; color: var(--good); }
+  .votes li { position: relative; }
+  .votes .name em { font: 800 15px var(--display); color: var(--muted); margin-right: 6px; }
+  .votes .name u { text-decoration: none; font-size: 11px; margin-right: 4px; }
+  .votes .up { color: var(--good); }
+  .votes .down { color: var(--bad); }
+  .votes .pts i { font-style: normal; font-weight: 700; font-size: 13px; }
   .votes .pts b { font: 800 20px var(--display); color: var(--accent); }
 
   .ranking { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -212,13 +217,13 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311353",
-  "./js/tics.js": "./js/tics.js?v=202610311353",
-  "./js/game.js": "./js/game.js?v=202610311353",
-  "./js/net.js": "./js/net.js?v=202610311353",
-  "./js/media.js": "./js/media.js?v=202610311353"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311358",
+  "./js/tics.js": "./js/tics.js?v=202610311358",
+  "./js/game.js": "./js/game.js?v=202610311358",
+  "./js/net.js": "./js/net.js?v=202610311358",
+  "./js/media.js": "./js/media.js?v=202610311358"
 } }
 </script>
-<script type="module" src="js/app.js?v=202610311353"></script>
+<script type="module" src="js/app.js?v=202610311358"></script>
 </body>
 </html>

@@ -48,8 +48,10 @@ for (let n = 1; n <= 6; n++) {
 assert.equal(game.phase, 'end');
 for (let i = 1; i < owners.length; i++) assert.notEqual(owners[i], owners[i - 1], 'jamais deux fois de suite le même');
 assert.deepEqual([...new Set(owners)].sort(), ['Inès', 'Julie Moreau', 'Karim B']);
-assert.equal(game.players.get('h').score, 6);
-assert.equal(game.players.get('b').score, owners.filter(o => o === 'Inès').length);
+assert.equal(game.players.get('h').score, 12, '2 points par bonne réponse');
+let expected = 0;
+for (const o of owners) expected = o === 'Inès' ? expected + 2 : Math.max(0, expected - 1);
+assert.equal(game.players.get('b').score, expected, '1 point en moins par mauvaise réponse, jamais sous zéro');
 assert.equal(game.players.get('c').score, 0);
 
 const played = new Set(game.used);

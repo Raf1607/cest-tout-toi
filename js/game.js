@@ -5,6 +5,7 @@ import { pickRecords } from './records.js';
 
 export const ROUNDS = [6, 10, 15, 20];
 export const SECONDS = [15, 25, 40];
+const GAIN = 2, LOSS = 1;   // points par bonne et par mauvaise réponse (jamais en dessous de zéro)
 const LAST_CALL = 5000;   // quand tout le monde a voté, il reste ce temps pour changer d'avis
 
 function shuffle(a) {
@@ -209,8 +210,13 @@ export class Game {
   reveal() {
     if (this.phase !== 'question') return;
     clearTimeout(this.timer);
+    this.round.deltas = {};
     for (const [id, author] of Object.entries(this.round.votes)) {
-      if (author === this.round.card.owner && this.players.has(id)) this.players.get(id).score++;
+      const p = this.players.get(id);
+      if (!p) continue;
+      const score = author === this.round.card.owner ? p.score + GAIN : Math.max(0, p.score - LOSS);
+      this.round.deltas[id] = score - p.score;
+      p.score = score;
     }
     this.phase = 'reveal';
     this.changed();
@@ -254,7 +260,7 @@ export class Game {
         Object.assign(v.round, { remaining: Math.max(0, endsAt - Date.now()), seconds: this.settings.seconds, votes, allVoted: !!this.round.allVoted });
       } else {
         const { uses, others, topOther, example } = card.tic;
-        Object.assign(v.round, { answer: card.owner, ownerMessages: this.member(card.owner).messages, uses, others, topOther, example, votes, last: n === this.deck.length });
+        Object.assign(v.round, { answer: card.owner, ownerMessages: this.member(card.owner).messages, uses, others, topOther, example, votes, deltas: this.round.deltas, last: n === this.deck.length });
       }
     }
     if (this.phase === 'end') {

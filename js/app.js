@@ -199,6 +199,8 @@ function render() {
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
   $app.dataset.key = key;
   if (key) patchQuestion();
+  if (ui.screen === 'game' && view.phase === 'lobby') rankMemo = { n: 0, before: [], after: [], played: true };
+  if (ui.screen === 'game' && view.phase === 'reveal') animateRanks();
   if (ui.screen === 'game' && view.phase === 'end') mountSlides();
   else { clearInterval(slideTimer); slideTimer = null; }
   tick();
@@ -382,10 +384,37 @@ function highlight(text, part) {
   return esc(text.slice(0, i)) + `<mark>${esc(text.slice(i, i + part.length))}</mark>` + esc(text.slice(i + part.length));
 }
 
+// Classement animé : après chaque réponse, chacun glisse de son ancienne place à la nouvelle.
+let rankMemo = { n: 0, before: [], after: [], played: true };
+function animateRanks() {
+  if (rankMemo.played) return;
+  rankMemo.played = true;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const rows = [...$app.querySelectorAll('.votes li[data-id]')];
+  if (rows.length < 2) return;
+  const step = rows[1].offsetTop - rows[0].offsetTop;
+  const moved = rows.filter(li => {
+    const was = rankMemo.before.indexOf(li.dataset.id), now = rankMemo.after.indexOf(li.dataset.id);
+    if (was < 0 || was === now) return false;
+    li.style.transform = `translateY(${(was - now) * step}px)`;
+    li.style.zIndex = was > now ? 2 : 1;      // ceux qui montent passent devant
+    return true;
+  });
+  setTimeout(() => {                          // on laisse d'abord voir la réponse
+    for (const li of moved) {
+      li.style.transition = 'transform .9s cubic-bezier(.3, 1.3, .5, 1)';
+      li.style.transform = '';
+    }
+  }, 1000);
+}
+
 function revealScreen() {
   const v = view, r = v.round;
   const ownerPlayer = v.players.find(p => p.author === r.answer);
-  const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score);
+  const before = rankMemo.n === r.n ? rankMemo.before : rankMemo.after;
+  const place = id => { const i = before.indexOf(id); return i < 0 ? before.length : i; };
+  const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score || place(a.id) - place(b.id));
+  if (rankMemo.n !== r.n) rankMemo = { n: r.n, before, after: rows.map(p => p.id), played: false };
   return `
     <div class="hud"><span>Manche ${r.n}/${r.total}</span></div>
     ${bubble(r)}
@@ -398,10 +427,13 @@ function revealScreen() {
       ${rows.map(p => {
         const vote = r.votes[p.id];
         const ok = vote === r.answer;
-        return `<li class="${vote ? (ok ? 'ok' : 'ko') : 'none'} ${p.connected ? '' : 'off'}">
-          <span class="name">${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
+        const delta = r.deltas[p.id] || 0;
+        const was = before.indexOf(p.id), now = rows.indexOf(p);
+        const trend = was < 0 || was === now ? '' : was > now ? '<u class="up">▲</u>' : '<u class="down">▼</u>';
+        return `<li data-id="${esc(p.id)}" class="${vote ? (ok ? 'ok' : 'ko') : 'none'} ${p.connected ? '' : 'off'}">
+          <span class="name"><em>${now + 1}</em>${trend}${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
           <span class="vote">${vote ? esc(vote) : 'pas voté'}</span>
-          <span class="pts">${ok ? '<i>+1</i>' : ''}<b>${p.score}</b></span>
+          <span class="pts">${delta ? `<i class="${delta > 0 ? 'up' : 'down'}">${delta > 0 ? '+' : '−'}${Math.abs(delta)}</i>` : ''}<b>${p.score}</b></span>
         </li>`;
       }).join('')}
     </ul>
