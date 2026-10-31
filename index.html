@@ -155,11 +155,16 @@
   .options button { flex-direction: column; gap: 6px; padding: 14px 10px; font-size: 17px; min-height: 76px; overflow-wrap: anywhere; }
   .options button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); opacity: 1; }
   .options:has(button:nth-child(5)) button { padding: 12px 8px; min-height: 64px; font-size: 16px; }
-  .options .who { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; min-height: 20px; }
-  .options .who i { font: normal 600 12px/1 system-ui, sans-serif; padding: 4px 8px; border-radius: 99px; background: var(--bg); color: var(--ink); }
-  .options .who i.me { background: var(--ink); color: var(--bg); }
-  .options button.on .who i { background: rgba(30, 26, 16, .15); color: var(--accent-ink); }
-  .options button.on .who i.me { background: var(--accent-ink); color: var(--accent); }
+  .round-top { display: flex; align-items: flex-start; gap: 14px; }
+  .round-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .round-info .bar { margin-top: 0; }
+  .mini { list-style: none; margin: 0; padding: 6px 10px; background: var(--surface); border-radius: 12px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; flex: none; max-width: 46%; }
+  .mini li { display: flex; align-items: center; gap: 6px; }
+  .mini li.off { opacity: .5; }
+  .mini i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; }
+  .mini li.voted i { background: var(--good); border-color: var(--good); }
+  .mini span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini b { font-family: var(--display); color: var(--accent); }
 
   .answer { font: 800 30px/1.15 var(--display); text-align: center; animation: pop .4s cubic-bezier(.2, 1.4, .4, 1); }
   .answer b { color: var(--accent); }
@@ -217,13 +222,13 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311358",
-  "./js/tics.js": "./js/tics.js?v=202610311358",
-  "./js/game.js": "./js/game.js?v=202610311358",
-  "./js/net.js": "./js/net.js?v=202610311358",
-  "./js/media.js": "./js/media.js?v=202610311358"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311402",
+  "./js/tics.js": "./js/tics.js?v=202610311402",
+  "./js/game.js": "./js/game.js?v=202610311402",
+  "./js/net.js": "./js/net.js?v=202610311402",
+  "./js/media.js": "./js/media.js?v=202610311402"
 } }
 </script>
-<script type="module" src="js/app.js?v=202610311358"></script>
+<script type="module" src="js/app.js?v=202610311402"></script>
 </body>
 </html>

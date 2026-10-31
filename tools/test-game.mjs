@@ -35,7 +35,10 @@ for (let n = 1; n <= 6; n++) {
   owners.push(answer);
   game.handle('h', { t: 'vote', n, author: answer });
   game.handle('b', { t: 'vote', n, author: answer });
-  assert.equal(game.view('c').round.votes.h, answer, 'les votes des autres se voient en direct');
+  const seen = game.view('c');
+  assert.equal(seen.round.votes, undefined, 'les votes des autres restent secrets pendant la manche');
+  assert.ok(seen.players.find(p => p.id === 'h').voted, 'on voit qui a voté');
+  assert.ok(seen.round.remaining <= 7000, 'dès le premier vote, il reste 7 secondes');
   game.handle('b', { t: 'vote', n, author: 'Inès' });       // change d'avis : c'est le dernier vote qui compte
   game.handle('c', { t: 'vote', n: n + 1, author: answer }); // mauvaise manche : ignoré
   game.reveal();
@@ -60,16 +63,15 @@ game.handle('h', { t: 'start' });
 assert.ok(game.deck.filter(c => !c.tic.id).every(c => !played.has(c.owner + '|' + (c.tic.file || c.tic.text))), 'on rejoue avec d\'autres tics');
 assert.equal(game.players.get('h').score, 0, 'scores remis à zéro');
 
-// Tout le monde a voté : il ne reste que 5 secondes, pendant lesquelles on peut encore changer d'avis.
+// On peut changer d'avis, et la manche se termine dès que tous les joueurs présents ont voté.
 game.handle('h', { t: 'vote', n: 1, author: 'Inès' });
 game.handle('b', { t: 'vote', n: 1, author: 'Inès' });
-game.leave('c');
-const v = game.view('h').round;
-assert.ok(v.allVoted && v.remaining <= 5000, 'temps raccourci quand tous les joueurs présents ont voté');
 game.handle('b', { t: 'vote', n: 1, author: 'Karim B' });
-await new Promise(r => setTimeout(r, 5500));
-assert.equal(game.phase, 'reveal');
-assert.equal(game.round.votes.b, 'Karim B', 'le changement de dernière seconde est pris en compte');
+assert.equal(game.phase, 'question', 'on attend encore le troisième joueur');
+game.leave('c');
+await new Promise(r => setTimeout(r, 800));
+assert.equal(game.phase, 'reveal', 'fin automatique quand tout le monde a voté');
+assert.equal(game.round.votes.b, 'Karim B', 'le changement d\'avis est pris en compte');
 clearTimeout(game.timer);
 
 // Export avec médias : stickers, GIF, habitudes et (en option) photos dans les manches.

@@ -6,7 +6,8 @@ import { pickRecords } from './records.js';
 export const ROUNDS = [6, 10, 15, 20];
 export const SECONDS = [15, 25, 40];
 const GAIN = 2, LOSS = 1;   // points par bonne et par mauvaise réponse (jamais en dessous de zéro)
-const LAST_CALL = 5000;   // quand tout le monde a voté, il reste ce temps pour changer d'avis
+const AFTER_FIRST_VOTE = 7000;   // dès le premier vote, il ne reste que ce temps aux autres
+const ALL_VOTED_PAUSE = 600;     // tout le monde a voté : petite pause avant la réponse
 
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -193,17 +194,17 @@ export class Game {
     this.changed();
   }
 
-  // Tout le monde a voté : on raccourcit le temps restant, en laissant quelques secondes
-  // pour changer d'avis au dernier moment.
+  // Premier vote : il ne reste que 7 secondes aux autres. Tout le monde a voté : la manche se termine.
   checkVotes() {
     if (this.phase !== 'question') return;
     const present = [...this.players.values()].filter(p => p.connected);
-    if (!present.length || !present.every(p => this.round.votes[p.id])) return;
-    this.round.allVoted = true;
-    if (this.round.endsAt - Date.now() > LAST_CALL) {
-      this.round.endsAt = Date.now() + LAST_CALL;
+    if (present.length && present.every(p => this.round.votes[p.id])) {
       clearTimeout(this.timer);
-      this.timer = setTimeout(() => this.reveal(), LAST_CALL + 300);
+      this.timer = setTimeout(() => this.reveal(), ALL_VOTED_PAUSE);
+    } else if (Object.keys(this.round.votes).length && this.round.endsAt - Date.now() > AFTER_FIRST_VOTE) {
+      this.round.endsAt = Date.now() + AFTER_FIRST_VOTE;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.reveal(), AFTER_FIRST_VOTE + 300);
     }
   }
 
@@ -257,7 +258,7 @@ export class Game {
       v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, of: card.tic.of || null, media: mediaOf(card.tic), options: this.options };
       if (this.phase === 'reveal' && card.tic.detail) v.round.detail = card.tic.detail;
       if (this.phase === 'question') {
-        Object.assign(v.round, { remaining: Math.max(0, endsAt - Date.now()), seconds: this.settings.seconds, votes, allVoted: !!this.round.allVoted });
+        Object.assign(v.round, { remaining: Math.max(0, endsAt - Date.now()), seconds: this.settings.seconds, myVote: votes[id] || null });
       } else {
         const { uses, others, topOther, example } = card.tic;
         Object.assign(v.round, { answer: card.owner, ownerMessages: this.member(card.owner).messages, uses, others, topOther, example, votes, deltas: this.round.deltas, last: n === this.deck.length });

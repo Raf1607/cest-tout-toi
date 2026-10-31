@@ -351,31 +351,34 @@ function statLine(r) {
 function questionScreen() {
   const r = view.round;
   return `
-    <div class="hud"><span>Manche ${r.n}/${r.total}</span><span class="timer" data-timer></span></div>
-    <div class="bar"><i data-bar></i></div>
+    <div class="round-top">
+      <div class="round-info">
+        <div class="hud"><span>Manche ${r.n}/${r.total}</span><span class="timer" data-timer></span></div>
+        <div class="bar"><i data-bar></i></div>
+      </div>
+      <ol class="mini" aria-label="Classement"></ol>
+    </div>
     <p class="ask">${ASK[r.kind]}</p>
     ${bubble(r)}
     <div class="options">${r.options.map(name =>
-      `<button data-act="vote" data-author="${esc(name)}"><span>${esc(name)}</span><span class="who"></span></button>`).join('')}</div>
+      `<button data-act="vote" data-author="${esc(name)}">${esc(name)}</button>`).join('')}</div>
     <p class="voters"></p>`;
 }
 
-// Qui a voté pour qui, en direct, sous chaque nom.
+// Mon vote, et le petit classement : les points de chacun et qui a déjà voté (pas pour qui).
 function patchQuestion() {
   const v = view, r = v.round;
-  const fans = {};
-  for (const p of v.players) if (r.votes[p.id]) (fans[r.votes[p.id]] ||= []).push(p);
-  for (const btn of $app.querySelectorAll('[data-act=vote]')) {
-    const name = btn.dataset.author;
-    btn.classList.toggle('on', r.votes[v.me] === name);
-    btn.querySelector('.who').innerHTML = (fans[name] || [])
-      .map(p => `<i class="${p.id === v.me ? 'me' : ''}">${p.id === v.me ? 'toi' : esc(nameOf(p).split(' ')[0])}</i>`).join('');
-  }
+  for (const btn of $app.querySelectorAll('[data-act=vote]')) btn.classList.toggle('on', r.myVote === btn.dataset.author);
+  const shown = v.players.filter(p => p.author || p.voted).sort((a, b) => b.score - a.score);
+  $app.querySelector('.mini').innerHTML = shown.map(p => `
+    <li class="${p.voted ? 'voted' : ''} ${p.connected ? '' : 'off'}">
+      <i aria-label="${p.voted ? 'a voté' : 'pas encore voté'}"></i><span>${p.id === v.me ? 'Toi' : esc(nameOf(p).split(' ')[0])}</span><b>${p.score}</b>
+    </li>`).join('');
   const present = v.players.filter(p => p.connected);
-  const voted = present.filter(p => r.votes[p.id]).length;
-  $app.querySelector('.voters').textContent = r.allVoted
-    ? "Tout le monde a voté : dernières secondes pour changer d'avis !"
-    : `${voted}/${present.length} ont voté · on peut changer d'avis jusqu'à la fin`;
+  const voted = present.filter(p => p.voted).length;
+  $app.querySelector('.voters').textContent = voted
+    ? `${voted}/${present.length} ont voté · on peut changer d'avis jusqu'à la fin`
+    : 'Dès le premier vote, il ne reste que 7 secondes !';
 }
 
 function highlight(text, part) {
