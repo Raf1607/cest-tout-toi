@@ -188,19 +188,25 @@ function show(v) {
 function render() {
   // Pendant une manche, les votes arrivent en continu : on met à jour les boutons sans les
   // redessiner, pour qu'un toucher en cours ne soit pas perdu.
-  const key = ui.screen === 'game' && view.phase === 'question' ? `${view.round.n}/${ui.status}` : '';
-  if (key && $app.dataset.key === key) { patchQuestion(); tick(); return; }
+  const inGame = ui.screen === 'game';
+  const key = inGame && view.phase === 'question' ? `${view.round.n}/${ui.status}`
+    : inGame && view.phase === 'ranking' ? `classement${view.ranking.n}` : '';
+  if (key && $app.dataset.key === key) {
+    if (view.phase === 'question') { patchQuestion(); tick(); }   // le classement animé, lui, n'est pas interrompu
+    return;
+  }
+  boardTimers.forEach(clearTimeout);
+  boardTimers = [];
   let html;
   if (ui.screen === 'home') html = homeScreen();
   else if (ui.screen === 'busy') html = `<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
-  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, end: endScreen }[view.phase]();
+  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? '<div class="banner">Connexion perdue, reconnexion…</div>' : '';
   $app.innerHTML = banner + html;
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
   $app.dataset.key = key;
-  if (key) patchQuestion();
-  if (ui.screen === 'game' && view.phase === 'lobby') rankMemo = { n: 0, before: [], after: [], played: true };
-  if (ui.screen === 'game' && view.phase === 'reveal') animateRanks();
+  if (inGame && view.phase === 'question') patchQuestion();
+  if (ui.screen === 'game' && view.phase === 'ranking') animateBoard();
   if (ui.screen === 'game' && view.phase === 'end') mountSlides();
   else { clearInterval(slideTimer); slideTimer = null; }
   tick();
@@ -387,37 +393,48 @@ function highlight(text, part) {
   return esc(text.slice(0, i)) + `<mark>${esc(text.slice(i, i + part.length))}</mark>` + esc(text.slice(i + part.length));
 }
 
-// Classement animé : après chaque réponse, chacun glisse de son ancienne place à la nouvelle.
-let rankMemo = { n: 0, before: [], after: [], played: true };
-function animateRanks() {
-  if (rankMemo.played) return;
-  rankMemo.played = true;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const rows = [...$app.querySelectorAll('.votes li[data-id]')];
-  if (rows.length < 2) return;
-  const step = rows[1].offsetTop - rows[0].offsetTop;
-  const moved = rows.filter(li => {
-    const was = rankMemo.before.indexOf(li.dataset.id), now = rankMemo.after.indexOf(li.dataset.id);
-    if (was < 0 || was === now) return false;
-    li.style.transform = `translateY(${(was - now) * step}px)`;
-    li.style.zIndex = was > now ? 2 : 1;      // ceux qui montent passent devant
-    return true;
+// Classement entre deux manches (5 secondes) : chacun part de son ancienne place, les points
+// s'ajoutent, puis les joueurs glissent vers leur nouvelle place.
+function rankingScreen() {
+  const { n, total, rows } = view.ranking;
+  const step = Math.min(68, Math.floor((window.innerHeight - 150) / Math.max(rows.length, 1)));
+  return `
+    <header class="brand small"><h1>Classement</h1><p>Après la manche ${n}/${total}</p></header>
+    <ol class="board" style="height:${rows.length * step}px">${rows.map((p, now) => `
+      <li data-now="${now}" data-was="${p.was}" class="${p.id === view.me ? 'me' : ''}" style="height:${step - 8}px;transform:translateY(${p.was * step}px)">
+        <em>${p.was + 1}</em>
+        <span class="name">${esc(p.id === view.me ? `${p.name} (toi)` : p.name)}</span>
+        ${p.delta ? `<i class="${p.delta > 0 ? 'up' : 'down'}">${p.delta > 0 ? '+' : '−'}${Math.abs(p.delta)}</i>` : ''}
+        <u class="${p.was > now ? 'up' : p.was < now ? 'down' : ''}">${p.was > now ? '▲' : p.was < now ? '▼' : ''}</u>
+        <b data-from="${p.score - p.delta}" data-to="${p.score}">${p.score - p.delta}</b>
+      </li>`).join('')}</ol>`;
+}
+
+let boardTimers = [];
+function animateBoard() {
+  const board = $app.querySelector('.board');
+  if (!board) return;
+  const rows = [...board.children];
+  const step = rows.length > 1 ? parseFloat(rows[0].style.height) + 8 : 0;
+  const later = (ms, fn) => boardTimers.push(setTimeout(fn, ms));
+  later(500, () => {                          // les points gagnés ou perdus
+    board.classList.add('scored');
+    for (const li of rows) li.querySelector('b').textContent = li.querySelector('b').dataset.to;
   });
-  setTimeout(() => {                          // on laisse d'abord voir la réponse
-    for (const li of moved) {
-      li.style.transition = 'transform .9s cubic-bezier(.3, 1.3, .5, 1)';
-      li.style.transform = '';
+  later(1500, () => {                         // puis chacun rejoint sa nouvelle place
+    board.classList.add('moving');
+    for (const li of rows) {
+      li.style.zIndex = +li.dataset.was > +li.dataset.now ? 2 : 1;   // ceux qui montent passent devant
+      li.style.transform = `translateY(${li.dataset.now * step}px)`;
+      li.querySelector('em').textContent = +li.dataset.now + 1;
     }
-  }, 1000);
+  });
 }
 
 function revealScreen() {
   const v = view, r = v.round;
   const ownerPlayer = v.players.find(p => p.author === r.answer);
-  const before = rankMemo.n === r.n ? rankMemo.before : rankMemo.after;
-  const place = id => { const i = before.indexOf(id); return i < 0 ? before.length : i; };
-  const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score || place(a.id) - place(b.id));
-  if (rankMemo.n !== r.n) rankMemo = { n: r.n, before, after: rows.map(p => p.id), played: false };
+  const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score);
   return `
     <div class="hud"><span>Manche ${r.n}/${r.total}</span></div>
     ${bubble(r)}
@@ -431,17 +448,15 @@ function revealScreen() {
         const vote = r.votes[p.id];
         const ok = vote === r.answer;
         const delta = r.deltas[p.id] || 0;
-        const was = before.indexOf(p.id), now = rows.indexOf(p);
-        const trend = was < 0 || was === now ? '' : was > now ? '<u class="up">▲</u>' : '<u class="down">▼</u>';
-        return `<li data-id="${esc(p.id)}" class="${vote ? (ok ? 'ok' : 'ko') : 'none'} ${p.connected ? '' : 'off'}">
-          <span class="name"><em>${now + 1}</em>${trend}${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
+        return `<li class="${vote ? (ok ? 'ok' : 'ko') : 'none'} ${p.connected ? '' : 'off'}">
+          <span class="name">${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
           <span class="vote">${vote ? esc(vote) : 'pas voté'}</span>
           <span class="pts">${delta ? `<i class="${delta > 0 ? 'up' : 'down'}">${delta > 0 ? '+' : '−'}${Math.abs(delta)}</i>` : ''}<b>${p.score}</b></span>
         </li>`;
       }).join('')}
     </ul>
     ${v.host
-      ? `<div class="actions"><button class="primary big" data-act="next">${r.last ? 'Voir le classement' : 'Manche suivante'}</button></div>`
+      ? `<div class="actions"><button class="primary big" data-act="next">Voir le classement</button></div>`
       : `<p class="wait">En attente de l'hôte…</p>`}`;
 }
 

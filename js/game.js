@@ -8,6 +8,7 @@ export const SECONDS = [15, 25, 40];
 const GAIN = 2, LOSS = 1;   // points par bonne et par mauvaise réponse (jamais en dessous de zéro)
 const AFTER_FIRST_VOTE = 7000;   // dès le premier vote, il ne reste que ce temps aux autres
 const ALL_VOTED_PAUSE = 600;     // tout le monde a voté : petite pause avant la réponse
+const RANKING_MS = 5000;         // durée de l'écran de classement entre deux manches
 
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -90,6 +91,7 @@ export class Game {
     this.deck = [];
     this.options = [];
     this.round = null;
+    this.order = [];      // classement à la fin de la manche précédente (ids)
     this.records = [];
     this.timer = null;
     this.join(hostId);
@@ -180,6 +182,7 @@ export class Game {
     this.deck = buildDeck(deckOwners, this.settings.rounds, this.used, this.settings.photos, extra);
     for (const p of this.players.values()) p.score = 0;
     this.index = 0;
+    this.order = [];
     this.ask();
   }
 
@@ -223,7 +226,22 @@ export class Game {
     this.changed();
   }
 
+  // Après la réponse : le classement animé pendant 5 secondes, puis la suite toute seule.
   next() {
+    const place = id => { const i = this.order.indexOf(id); return i < 0 ? this.order.length : i; };
+    const shown = [...this.players.values()].filter(p => p.author || this.round.votes[p.id]);
+    const after = shown.sort((a, b) => b.score - a.score || place(a.id) - place(b.id)).map(p => p.id);
+    this.ranking = { before: this.order.length ? this.order : after, after, deltas: this.round.deltas || {} };
+    this.order = after;
+    this.phase = 'ranking';
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.advance(), RANKING_MS);
+    this.changed();
+  }
+
+  advance() {
+    if (this.phase !== 'ranking') return;
+    clearTimeout(this.timer);
     this.index++;
     if (this.index < this.deck.length) return this.ask();
     this.phase = 'end';
@@ -263,6 +281,16 @@ export class Game {
         const { uses, others, topOther, example } = card.tic;
         Object.assign(v.round, { answer: card.owner, ownerMessages: this.member(card.owner).messages, uses, others, topOther, example, votes, deltas: this.round.deltas, last: n === this.deck.length });
       }
+    }
+    if (this.phase === 'ranking') {
+      const { before, after, deltas } = this.ranking;
+      v.ranking = {
+        n: this.round.n, total: this.deck.length,
+        rows: after.map(pid => {
+          const p = this.players.get(pid);
+          return { id: pid, name: p.author || 'Nouveau joueur', score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
+        }),
+      };
     }
     if (this.phase === 'end') {
       v.slides = this.slides();

@@ -47,6 +47,7 @@ for (let n = 1; n <= 6; n++) {
   assert.equal(r.votes.b, 'Inès');
   assert.equal(r.votes.c, undefined);
   game.handle('h', { t: 'next' });
+  game.advance();
 }
 assert.equal(game.phase, 'end');
 for (let i = 1; i < owners.length; i++) assert.notEqual(owners[i], owners[i - 1], 'jamais deux fois de suite le même');
@@ -74,6 +75,31 @@ assert.equal(game.phase, 'reveal', 'fin automatique quand tout le monde a voté'
 assert.equal(game.round.votes.b, 'Karim B', 'le changement d\'avis est pris en compte');
 clearTimeout(game.timer);
 
+// Après chaque réponse, le classement : anciennes places, nouvelles places, points gagnés ou perdus.
+const r1 = new Game(analysis, 'RANK', 'h', () => {});
+r1.join('b');
+r1.handle('h', { t: 'claim', author: 'Julie Moreau' });
+r1.handle('b', { t: 'claim', author: 'Karim B' });
+r1.handle('h', { t: 'start' });
+const roundOf = async (right, wrong) => {
+  const answer = r1.round.card.owner, bad = r1.options.find(o => o !== answer);
+  r1.handle(right, { t: 'vote', n: r1.round.n, author: answer });
+  r1.handle(wrong, { t: 'vote', n: r1.round.n, author: bad });
+  r1.reveal();
+  r1.handle('h', { t: 'next' });
+  assert.equal(r1.phase, 'ranking', 'le classement s\'affiche entre les manches');
+  const rows = r1.view('h').ranking.rows;
+  r1.advance();
+  return rows;
+};
+await roundOf('h', 'b');
+await roundOf('h', 'b');
+await roundOf('b', 'h');
+let rows = await roundOf('b', 'h');
+assert.deepEqual(rows.map(p => [p.id, p.score, p.delta]), [['b', 4, 2], ['h', 2, -1]], 'b dépasse h');
+assert.deepEqual(rows.map(p => p.was), [1, 0], 'chacun part de son ancienne place');
+clearTimeout(r1.timer);
+
 // Export avec médias : stickers, GIF, habitudes et (en option) photos dans les manches.
 const zipName = 'WhatsApp Chat - Les Potes (avec médias).zip';
 const exp = readZipExport(fileURLToPath(new URL('../samples/' + zipName, import.meta.url)));
@@ -92,6 +118,7 @@ for (let i = 0; i < media.deck.length; i++) {
   if (['sticker', 'gif', 'photo'].includes(q.kind)) assert.ok(q.media?.id && exp.files.has(q.media.id), 'le média de la manche existe dans l\'export');
   media.reveal();
   media.next();
+  media.advance();
 }
 assert.equal(media.phase, 'end');
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

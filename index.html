@@ -187,12 +187,21 @@
   .votes li.ok .vote { color: var(--good); }
   .votes li.ko .vote { color: var(--bad); text-decoration: line-through; }
   .votes .pts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-  .votes li { position: relative; }
-  .votes .name em { font: 800 15px var(--display); color: var(--muted); margin-right: 6px; }
-  .votes .name u { text-decoration: none; font-size: 11px; margin-right: 4px; }
   .votes .up { color: var(--good); }
   .votes .down { color: var(--bad); }
   .votes .pts i { font-style: normal; font-weight: 700; font-size: 13px; }
+  .board { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
+  .board li { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--surface); border-radius: 14px; font-size: 17px; transition: transform 1.6s cubic-bezier(.3, 1.2, .5, 1); }
+  .board li.me { outline: 2px solid var(--accent); }
+  .board em { font: 800 20px var(--display); color: var(--muted); width: 1.4em; }
+  .board .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board i { font-style: normal; font-weight: 800; font-size: 15px; opacity: 0; transform: scale(.4); transition: opacity .3s, transform .4s cubic-bezier(.2, 1.8, .4, 1); }
+  .board.scored i { opacity: 1; transform: none; }
+  .board i.up, .board u.up { color: var(--good); }
+  .board i.down, .board u.down { color: var(--bad); }
+  .board u { text-decoration: none; font-size: 13px; opacity: 0; transition: opacity .4s; }
+  .board.moving u { opacity: 1; }
+  .board b { font: 800 24px var(--display); color: var(--accent); min-width: 1.6em; text-align: right; }
   .votes .pts b { font: 800 20px var(--display); color: var(--accent); }
 
   .ranking { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -222,13 +231,13 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311402",
-  "./js/tics.js": "./js/tics.js?v=202610311402",
-  "./js/game.js": "./js/game.js?v=202610311402",
-  "./js/net.js": "./js/net.js?v=202610311402",
-  "./js/media.js": "./js/media.js?v=202610311402"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311405",
+  "./js/tics.js": "./js/tics.js?v=202610311405",
+  "./js/game.js": "./js/game.js?v=202610311405",
+  "./js/net.js": "./js/net.js?v=202610311405",
+  "./js/media.js": "./js/media.js?v=202610311405"
 } }
 </script>
-<script type="module" src="js/app.js?v=202610311402"></script>
+<script type="module" src="js/app.js?v=202610311405"></script>
 </body>
 </html>
