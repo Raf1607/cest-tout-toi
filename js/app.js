@@ -3,7 +3,7 @@
 /* global qrcode, NoSleep */
 import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
-import { Game, ROUNDS, SECONDS } from './game.js';
+import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_MS } from './game.js';
 import { openRoom, Client } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
 
@@ -190,7 +190,8 @@ function render() {
   // redessiner, pour qu'un toucher en cours ne soit pas perdu.
   const inGame = ui.screen === 'game';
   const key = inGame && view.phase === 'question' ? `${view.round.n}/${ui.status}`
-    : inGame && view.phase === 'ranking' ? `classement${view.ranking.n}` : '';
+    : inGame && view.phase === 'ranking' ? `classement${view.ranking.n}`
+    : inGame && view.phase === 'wheel' ? `roue${view.wheel.index}` : '';
   if (key && $app.dataset.key === key) {
     if (view.phase === 'question') { patchQuestion(); tick(); }   // le classement animé, lui, n'est pas interrompu
     return;
@@ -200,13 +201,14 @@ function render() {
   let html;
   if (ui.screen === 'home') html = homeScreen();
   else if (ui.screen === 'busy') html = `<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
-  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, end: endScreen }[view.phase]();
+  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? '<div class="banner">Connexion perdue, reconnexion…</div>' : '';
   $app.innerHTML = banner + html;
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
   $app.dataset.key = key;
   if (inGame && view.phase === 'question') patchQuestion();
   if (ui.screen === 'game' && view.phase === 'ranking') animateBoard();
+  if (ui.screen === 'game' && view.phase === 'wheel') spinWheel();
   if (ui.screen === 'game' && view.phase === 'end') mountSlides();
   else { clearInterval(slideTimer); slideTimer = null; }
   tick();
@@ -364,10 +366,13 @@ function questionScreen() {
       </div>
       <ol class="mini" aria-label="Classement"></ol>
     </div>
+    ${r.double ? '<p class="fx good">Bonus : tes points comptent double sur cette manche</p>' : ''}
+    ${r.hint ? `<p class="fx good">Bonus : son prénom contient la lettre ${esc(r.hint)}</p>` : ''}
+    ${r.labels ? '<p class="fx bad">Malus : les noms sont mélangés</p>' : ''}
     <p class="ask">${ASK[r.kind]}</p>
     ${bubble(r)}
     <div class="options">${r.options.map(name =>
-      `<button data-act="vote" data-author="${esc(name)}">${esc(name)}</button>`).join('')}</div>
+      `<button data-act="vote" data-author="${esc(name)}">${esc(r.labels?.[name] || name)}</button>`).join('')}</div>
     <p class="voters"></p>`;
 }
 
@@ -375,6 +380,7 @@ function questionScreen() {
 function patchQuestion() {
   const v = view, r = v.round;
   for (const btn of $app.querySelectorAll('[data-act=vote]')) btn.classList.toggle('on', r.myVote === btn.dataset.author);
+  $app.querySelector('.bubble').classList.toggle('blurred', !!r.blurred);
   const shown = v.players.filter(p => p.author || p.voted).sort((a, b) => b.score - a.score);
   $app.querySelector('.mini').innerHTML = shown.map(p => `
     <li class="${p.voted ? 'voted' : ''} ${p.connected ? '' : 'off'}">
@@ -408,6 +414,46 @@ function rankingScreen() {
         <u class="${p.was > now ? 'up' : p.was < now ? 'down' : ''}">${p.was > now ? '▲' : p.was < now ? '▼' : ''}</u>
         <b data-from="${p.score - p.delta}" data-to="${p.score}">${p.score - p.delta}</b>
       </li>`).join('')}</ol>`;
+}
+
+// Roue de la fortune : tous les téléphones affichent le même résultat, tiré par l'hôte.
+function wheelScreen() {
+  const angle = 360 / WHEEL.length;
+  const slices = WHEEL.map((s, i) => `var(--${s.kind}${i % 4 < 2 ? '' : '-2'}) ${i * angle}deg ${(i + 1) * angle}deg`).join(',');
+  return `
+    <header class="brand small"><h1>Roue de la fortune</h1></header>
+    <div class="wheel-box">
+      <div class="pointer"></div>
+      <div class="wheel" style="background:conic-gradient(${slices})">${WHEEL.map((s, i) =>
+        `<span style="transform:rotate(${(i + 0.5) * angle}deg)"><b>${esc(s.label)}</b></span>`).join('')}</div>
+    </div>
+    <p class="wheel-result" data-result></p>`;
+}
+
+function wheelMessage() {
+  const w = view.wheel, seg = WHEEL[w.index], who = esc(w.target), me = w.mine;
+  if (w.shielded) return `Le bouclier de ${who} bloque le malus «&nbsp;${esc(seg.label)}&nbsp;»&nbsp;!`;
+  if (seg.id === 'double') return `${who}, le plus rapide à voter, a ses points doublés à la prochaine manche&nbsp;!`;
+  if (seg.id === 'lettre') return `${who}, le plus rapide à voter, aura un indice à la prochaine manche&nbsp;!`;
+  if (seg.id === 'bouclier') return `${who}, le plus rapide à voter, gagne un bouclier contre le prochain malus&nbsp;!`;
+  if (seg.id === 'moins2') return `${who}, en tête, perd 2 points&nbsp;!`;
+  if (seg.id === 'flou') return `${who}, en tête, aura une question floue jusqu'au premier vote&nbsp;!`;
+  return `${who}, en tête, aura les noms mélangés à la prochaine manche&nbsp;!`;
+}
+
+function spinWheel() {
+  const wheel = $app.querySelector('.wheel');
+  if (!wheel) return;
+  const angle = 360 / WHEEL.length;
+  const jitter = (Math.random() - 0.5) * angle * 0.7;   // jamais sur la ligne entre deux cases
+  const stop = 360 * 6 - (view.wheel.index + 0.5) * angle + jitter;
+  boardTimers.push(setTimeout(() => { wheel.style.transform = `rotate(${stop}deg)`; }, 60));
+  boardTimers.push(setTimeout(() => {
+    const seg = WHEEL[view.wheel.index];
+    const box = $app.querySelector('[data-result]');
+    box.className = `wheel-result show ${view.wheel.shielded ? '' : seg.kind}`;
+    box.innerHTML = wheelMessage();
+  }, WHEEL_MS - 2000));
 }
 
 let boardTimers = [];

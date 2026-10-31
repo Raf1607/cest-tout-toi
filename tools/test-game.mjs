@@ -5,12 +5,13 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { parseChat } from '../js/whatsapp.js';
 import { analyze } from '../js/tics.js';
-import { Game } from '../js/game.js';
+import { Game, WHEEL } from '../js/game.js';
 import { readZipExport } from './zip-export.mjs';
 
 const name = 'Discussion WhatsApp avec Les Potes.txt';
 const analysis = analyze(parseChat(readFileSync(new URL('../samples/' + name, import.meta.url), 'utf8'), name));
 const game = new Game(analysis, 'TEST', 'h', () => {});
+game.wheelChance = 0;
 game.join('b');
 game.join('c');
 
@@ -77,6 +78,7 @@ clearTimeout(game.timer);
 
 // Après chaque réponse, le classement : anciennes places, nouvelles places, points gagnés ou perdus.
 const r1 = new Game(analysis, 'RANK', 'h', () => {});
+r1.wheelChance = 0;
 r1.join('b');
 r1.handle('h', { t: 'claim', author: 'Julie Moreau' });
 r1.handle('b', { t: 'claim', author: 'Karim B' });
@@ -104,6 +106,7 @@ clearTimeout(r1.timer);
 const zipName = 'WhatsApp Chat - Les Potes (avec médias).zip';
 const exp = readZipExport(fileURLToPath(new URL('../samples/' + zipName, import.meta.url)));
 const media = new Game(analyze(parseChat(exp.text, zipName), exp.files), 'MEDI', 'h', () => {});
+media.wheelChance = 0;
 ['h', 'b', 'c', 'd'].forEach(id => media.join(id));
 ['Julie Moreau', 'Karim B', 'Inès', 'Thomas Lefèvre'].forEach((name, i) => media.handle('hbcd'[i], { t: 'claim', author: name }));
 media.handle('h', { t: 'settings', settings: { rounds: 20, photos: true } });
@@ -121,4 +124,55 @@ for (let i = 0; i < media.deck.length; i++) {
   media.advance();
 }
 assert.equal(media.phase, 'end');
+// Roue de la fortune : hasard, bonus pour le premier votant, malus pour le premier du classement.
+{
+  const w = new Game(analysis, 'ROUE', 'h', () => {});
+  w.wheelChance = 1;
+  w.join('b');
+  w.handle('h', { t: 'claim', author: 'Julie Moreau' });
+  w.handle('b', { t: 'claim', author: 'Karim B' });
+  w.handle('h', { t: 'settings', settings: { rounds: 20 } });
+  w.handle('h', { t: 'start' });
+  const seen = new Set();
+  for (let i = 0; i < 12 && w.phase === 'question'; i++) {
+    const answer = w.round.card.owner, bad = w.options.find(o => o !== answer);
+    w.handle('b', { t: 'vote', n: w.round.n, author: bad });     // b vote en premier, et se trompe
+    w.handle('h', { t: 'vote', n: w.round.n, author: answer });  // h prend la tête
+    w.reveal();
+    w.next();
+    w.advance();
+    assert.equal(w.phase, 'wheel');
+    const seg = WHEEL[w.wheel.index];
+    seen.add(seg.id);
+    if (!w.wheel.shielded) assert.equal(w.wheel.target, seg.kind === 'bonus' ? 'b' : w.order[0], `cible de ${seg.id}`);
+    const fx = { ...w.pending };
+    w.advance();
+    if (w.phase !== 'question') break;
+    const hv = w.view('h').round, bv = w.view('b').round;
+    if (fx.flou === 'h') assert.ok(hv.blurred && !bv.blurred, 'seul le visé a la question floue');
+    if (fx.flou) { w.handle('b', { t: 'vote', n: w.round.n, author: answer }); assert.ok(!w.view('h').round.blurred, 'net dès le premier vote'); w.round.votes = {}; w.round.first = undefined; }
+    if (fx.melange === 'h') { assert.ok(hv.labels && !bv.labels); for (const n of w.options) assert.equal([...hv.labels[n].toLowerCase()].sort().join(''), [...n.toLowerCase()].sort().join(''), 'mêmes lettres'); }
+    if (fx.lettre === 'b') assert.ok(w.round.card.owner.split(' ')[0].toUpperCase().includes(bv.hint) && !hv.hint, 'lettre du prénom à trouver');
+    if (fx.double === 'b') assert.ok(bv.double && !hv.double);
+  }
+  clearTimeout(w.timer);
+  assert.ok(seen.size >= 2, 'la roue varie');
+  // Bouclier : il bloque un malus, une seule fois.
+  const s = new Game(analysis, 'BOUC', 'h', () => {});
+  s.wheelChance = 0;
+  s.join('b');
+  s.handle('h', { t: 'claim', author: 'Julie Moreau' });
+  s.handle('b', { t: 'claim', author: 'Karim B' });
+  s.handle('h', { t: 'start' });
+  s.reveal(); s.order = ['h', 'b']; s.players.get('h').score = 5; s.shields.add('h'); s.round.first = 'b';
+  const real = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+  const force = id => { const i = WHEEL.findIndex(x => x.id === id); globalThis.crypto.getRandomValues = a => { a[0] = i; return a; }; };
+  force('moins2'); s.spin();
+  assert.ok(s.wheel.shielded && s.players.get('h').score === 5 && !s.shields.has('h'), 'le bouclier absorbe le malus');
+  s.spin();
+  assert.equal(s.players.get('h').score, 3, 'sans bouclier, -2 points');
+  globalThis.crypto.getRandomValues = real;
+  clearTimeout(s.timer);
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));
