@@ -3,7 +3,8 @@
 /* global qrcode, NoSleep */
 import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
-import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_MS } from './game.js';
+import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_MS, MONTAGE_MS } from './game.js';
+import { BPM, unlockAudio, playPhonk } from './phonk.js';
 import { openRoom, Client } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
 
@@ -53,6 +54,7 @@ const nameOf = p => p.author || 'Nouveau joueur';
 // Stickers, GIF et photos à montrer : id (nom du fichier dans l'export) → adresse locale de l'image.
 const mediaCache = new Map();
 function mediaArrived(id) {
+  if (view?.phase === 'montage') return;   // le montage pioche dans ce qui est arrivé
   if (view?.phase === 'end') {
     if (!$app.querySelector('[data-slides] .slide')) mountSlides();   // première photo arrivée
     return;
@@ -103,7 +105,18 @@ async function host(getFile) {
         console.warn('Média illisible', id, err);
       }
     }
+    // Les médias du montage partent en arrière-plan dès le début de la partie, un par un.
+    let montageSent = false;
+    async function shareMontage() {
+      if (montageSent) return;
+      montageSent = true;
+      for (const m of game.montageItems()) {
+        await share(m);
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
     async function shareRound() {
+      if (game.phase !== 'lobby') shareMontage();
       if (game.phase === 'end') {
         for (const slide of game.slides()) await share({ file: slide.id, kind: 'photo' });   // une à une, pour ne pas saturer
         return;
@@ -124,6 +137,7 @@ async function host(getFile) {
           const current = game.round && shared.get(game.round.card.tic.file);
           if (current && game.phase !== 'lobby' && game.phase !== 'end') sendChunks(conn, current);
           if (game.phase === 'end') for (const slide of game.slides()) if (shared.get(slide.id)) sendChunks(conn, shared.get(slide.id));
+          if (game.phase !== 'lobby') for (const m of game.montageItems()) if (shared.get(m.file)) sendChunks(conn, shared.get(m.file));
         } else if (pid) game.handle(pid, msg);
       });
       conn.on('close', () => { if (pid && conns.get(pid) === conn) { conns.delete(pid); game.leave(pid); } });
@@ -191,17 +205,18 @@ function render() {
   const inGame = ui.screen === 'game';
   const key = inGame && view.phase === 'question' ? `${view.round.n}/${ui.status}`
     : inGame && view.phase === 'ranking' ? `classement${view.ranking.n}`
-    : inGame && view.phase === 'wheel' ? `roue${view.wheel.index}` : '';
+    : inGame && view.phase === 'wheel' ? `roue${view.wheel.index}`
+    : inGame && view.phase === 'montage' ? 'montage' : '';
   if (key && $app.dataset.key === key) {
     if (view.phase === 'question') { patchQuestion(); tick(); }   // le classement animé, lui, n'est pas interrompu
     return;
   }
-  boardTimers.forEach(clearTimeout);
+  boardTimers.forEach(t => (t?.stop ? t.stop() : clearTimeout(t)));
   boardTimers = [];
   let html;
   if (ui.screen === 'home') html = homeScreen();
   else if (ui.screen === 'busy') html = `<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
-  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, end: endScreen }[view.phase]();
+  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? '<div class="banner">Connexion perdue, reconnexion…</div>' : '';
   $app.innerHTML = banner + html;
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
@@ -209,6 +224,7 @@ function render() {
   if (inGame && view.phase === 'question') patchQuestion();
   if (ui.screen === 'game' && view.phase === 'ranking') animateBoard();
   if (ui.screen === 'game' && view.phase === 'wheel') spinWheel();
+  if (ui.screen === 'game' && view.phase === 'montage') runMontage();
   if (ui.screen === 'game' && view.phase === 'end') mountSlides();
   else { clearInterval(slideTimer); slideTimer = null; }
   tick();
@@ -315,7 +331,7 @@ function lobbyScreen() {
       </label>` : ''}
       ${v.slideCount ? `
       <label class="setting toggle">
-        <span>Diaporama des photos à la fin <small>(les ${v.slideCount} photos qui ont le plus fait réagir le groupe)</small></span>
+        <span>Montage en musique et diaporama à la fin <small>(les photos, stickers et GIF du groupe)</small></span>
         <input type="checkbox" data-input="slideshow" ${v.settings.slideshow ? 'checked' : ''}>
       </label>` : ''}
       <div class="actions">
@@ -478,6 +494,45 @@ function confetti(parent) {
   }
 }
 
+// Montage de fin façon edit : les médias défilent en rythme sur la phonk, avec un effet par plan.
+const CUTS = ['punch', 'shake', 'flash', 'glitch', 'noir', 'tilt', 'slide'];
+const RHYTHM = [2, 1, 1, 2, 1, 1, 1, 1];      // durée de chaque plan, en temps
+
+function montageScreen() {
+  return `<div class="edit"><div class="edit-frame" data-frame></div></div>
+    ${view.host ? '<button class="link edit-skip" data-act="skip">Passer</button>' : ''}`;
+}
+
+function runMontage() {
+  const frame = $app.querySelector('[data-frame]');
+  if (!frame) return;
+  const beat = 60000 / BPM, { items, quotes } = view.montage;
+  const stop = playPhonk(MONTAGE_MS / 1000);
+  boardTimers.push({ stop });
+  const show = (html, fx) => {
+    frame.className = 'edit-frame';
+    frame.innerHTML = html;
+    void frame.offsetWidth;                   // relance l'animation même si l'effet est le même
+    frame.classList.add(fx);
+  };
+  const text = (t, cls) => `<p class="edit-text ${cls}">${esc(t)}</p>`;
+  show(text('WHO IS BRO ?', 'big'), 'shake');
+  let at = beat * 8, i = 0, cut = 0, q = 0;
+  const end = MONTAGE_MS - beat * 8;
+  while (at < end) {
+    const n = cut++, length = RHYTHM[n % RHYTHM.length] * beat;
+    boardTimers.push(setTimeout(() => {
+      if (n % 7 === 6 && quotes.length) return show(text(quotes[q++ % quotes.length], 'quote'), 'punch');
+      const ready = items.filter(m => mediaCache.has(m.id));
+      if (!ready.length) return show(text('WHO IS BRO ?', 'big'), CUTS[n % CUTS.length]);
+      const m = ready[i++ % ready.length], url = mediaCache.get(m.id);
+      show(m.type === 'video' ? `<video src="${url}" autoplay loop muted playsinline></video>` : `<img src="${url}" alt="">`, CUTS[Math.floor(Math.random() * CUTS.length)]);
+    }, at));
+    at += length;
+  }
+  boardTimers.push(setTimeout(() => show(text('ET LE GAGNANT EST…', 'big'), 'punch'), end));
+}
+
 let boardTimers = [];
 function animateBoard() {
   const board = $app.querySelector('.board');
@@ -600,6 +655,8 @@ document.addEventListener('click', () => {
 
 // ——— Événements ———
 
+document.addEventListener('click', unlockAudio, true);
+
 $app.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
@@ -611,7 +668,7 @@ $app.addEventListener('click', async e => {
   else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });
   else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
   else if (act === 'set') send({ t: 'settings', settings: { [el.dataset.key]: Number(el.dataset.value) } });
-  else if (act === 'start' || act === 'next' || act === 'replay') send({ t: act });
+  else if (act === 'start' || act === 'next' || act === 'replay' || act === 'skip') send({ t: act });
   else if (act === 'share') {
     const url = inviteUrl(view.code);
     try {

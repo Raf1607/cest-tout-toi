@@ -38,6 +38,8 @@ function scramble(name) {
   }).join(' ');
 }
 
+export const MONTAGE_MS = 18000;   // montage de fin, avant le classement final
+const MONTAGE_MIN_ITEMS = 3;
 const RANKING_MS = 3000;         // durée de l'écran de classement entre deux manches
 
 function shuffle(a) {
@@ -177,6 +179,8 @@ export class Game {
       if (this.canStart().ok) return this.start();
     } else if (msg.t === 'next' && host && this.phase === 'reveal') {
       return this.next();
+    } else if (msg.t === 'skip' && host && this.phase === 'montage') {
+      return this.finish();
     } else if (msg.t === 'replay' && host && this.phase === 'end') {
       this.phase = 'lobby';
     }
@@ -292,8 +296,21 @@ export class Game {
     clearTimeout(this.timer);
     this.index++;
     if (this.index < this.deck.length) return this.ask();
+    if (this.montageItems().length < MONTAGE_MIN_ITEMS) return this.finish();
+    this.phase = 'montage';
+    this.timer = setTimeout(() => this.finish(), MONTAGE_MS);
+    this.changed();
+  }
+
+  finish() {
+    clearTimeout(this.timer);
     this.phase = 'end';
     this.changed();
+  }
+
+  // Médias du montage de fin (export avec médias, si l'hôte a laissé l'option activée).
+  montageItems() {
+    return this.settings.slideshow ? this.analysis.montage || [] : [];
   }
 
   spin() {
@@ -358,6 +375,12 @@ export class Game {
           const p = this.players.get(pid);
           return { id: pid, name: p.author || 'Nouveau joueur', score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
         }),
+      };
+    }
+    if (this.phase === 'montage') {
+      v.montage = {
+        items: this.montageItems().map(m => mediaOf(m)),
+        quotes: (this.analysis.cults || []).slice(0, 3).map(c => c.text),
       };
     }
     if (this.phase === 'wheel') {

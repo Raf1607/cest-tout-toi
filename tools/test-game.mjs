@@ -123,6 +123,14 @@ for (let i = 0; i < media.deck.length; i++) {
   media.next();
   media.advance();
 }
+assert.equal(media.phase, 'montage', 'le montage précède le classement final');
+const mv = media.view('b').montage;
+assert.ok(mv.items.length >= 15, 'au moins 15 médias dans le montage');
+assert.ok(mv.items.every(m => exp.files.has(m.id)));
+assert.equal(new Set(mv.items.map(m => m.id)).size, mv.items.length, 'pas de doublon');
+media.handle('b', { t: 'skip' });
+assert.equal(media.phase, 'montage', 'seul l\'hôte peut passer le montage');
+media.handle('h', { t: 'skip' });
 assert.equal(media.phase, 'end');
 // Roue de la fortune : hasard, bonus pour le premier votant, malus pour le premier du classement.
 {

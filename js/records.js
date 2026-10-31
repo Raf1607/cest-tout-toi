@@ -195,3 +195,18 @@ export function cultMessages(chat, max = 5) {
     .map(({ author, text, reactions, emojis }) => ({ author, text, detail: `${reactions} emojis en réaction juste après : ${emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')}.` }));
 }
 
+// Montage de fin : les photos les plus commentées, plus les stickers et GIF les plus envoyés du groupe.
+export function montageItems(chat, files, max = 24) {
+  const counts = new Map();
+  for (const m of chat.medias || []) {
+    const f = m.file && files.get(m.file);
+    if (!f || (m.kind !== 'sticker' && m.kind !== 'gif') || f.size > 1.5 * 1024 * 1024) continue;
+    const key = f.key;
+    if (!counts.has(key)) counts.set(key, { file: m.file, kind: m.kind, n: 0 });
+    counts.get(key).n++;
+  }
+  const extras = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 8).map(({ file, kind }) => ({ file, kind }));
+  const photos = bestPhotos(chat, files, max - extras.length).map(({ file }) => ({ file, kind: 'photo' }));
+  return [...photos, ...extras];
+}
+
