@@ -42,6 +42,21 @@ if (['localhost', '127.0.0.1'].includes(location.hostname)) {
 }
 const inviteUrl = code => `${lanUrl || location.origin + location.pathname}?p=${code}`;
 
+// Compteur de parties, tous joueurs confondus : un service public gratuit (Abacus) garde le total,
+// faute de serveur à nous. Il ne reçoit qu'un « +1 », rien sur la partie. S'il est en panne, on n'affiche rien.
+const COUNTER = 'https://abacus.jasoncameron.dev';
+const COUNTER_KEY = 'who-is-bro-raf1607/parties';
+let gamesPlayed = null;
+fetch(`${COUNTER}/get/${COUNTER_KEY}`).then(r => (r.ok ? r.json() : null)).then(d => {
+  gamesPlayed = d?.value ?? null;
+  if (gamesPlayed && ui.screen === 'home') render();
+}).catch(() => { /* compteur indisponible */ });
+let demoGame = false;
+const countGame = () => {
+  if (demoGame || ['localhost', '127.0.0.1'].includes(location.hostname)) return;
+  fetch(`${COUNTER}/hit/${COUNTER_KEY}`).catch(() => { /* compteur indisponible */ });
+};
+
 function qrSvg(text) {
   if (typeof qrcode !== 'function') return '';
   const q = qrcode(0, 'M');
@@ -236,6 +251,7 @@ function homeScreen() {
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
       <p>Le jeu qui démasque les tics de langage de votre groupe WhatsApp.</p>
+      ${gamesPlayed ? `<p class="counter"><b>${fmt(gamesPlayed)}</b> partie${gamesPlayed > 1 ? 's' : ''} jouée${gamesPlayed > 1 ? 's' : ''}</p>` : ''}
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
     ${lanUrl ? `
@@ -676,13 +692,17 @@ $app.addEventListener('click', async e => {
   if (!el || el.disabled) return;
   const { act } = el.dataset;
   if (act === 'demo') {
+    demoGame = true;                          // la démo ne compte pas dans le total
     const name = 'WhatsApp Chat - Les Potes (avec médias).zip';
     host(() => fetch('samples/' + encodeURIComponent(name)).then(r => r.blob()).then(b => new File([b], name, { type: 'application/zip' })));
   }
   else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });
   else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
   else if (act === 'set') send({ t: 'settings', settings: { [el.dataset.key]: Number(el.dataset.value) } });
-  else if (act === 'start' || act === 'next' || act === 'replay' || act === 'skip') send({ t: act });
+  else if (act === 'start' || act === 'next' || act === 'replay' || act === 'skip') {
+    send({ t: act });
+    if (act === 'start' && game?.phase === 'question') countGame();
+  }
   else if (act === 'share') {
     const url = inviteUrl(view.code);
     try {
