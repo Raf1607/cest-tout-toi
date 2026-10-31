@@ -115,7 +115,7 @@ export class Game {
     this.code = code;
     this.hostId = hostId;
     this.players = new Map();       // id → { id, author, score, connected, order }
-    this.settings = { rounds: 10, seconds: 25, absent: false, photos: false, slideshow: true };
+    this.settings = { rounds: 10, seconds: 25, absent: false, photos: false, slideshow: true, wheel: true };
     this.phase = 'lobby';
     this.used = new Set();
     this.deck = [];
@@ -172,6 +172,7 @@ export class Game {
       if (typeof s.absent === 'boolean') this.settings.absent = s.absent;
       if (typeof s.photos === 'boolean') this.settings.photos = s.photos;
       if (typeof s.slideshow === 'boolean') this.settings.slideshow = s.slideshow;
+      if (typeof s.wheel === 'boolean') this.settings.wheel = s.wheel;
     } else if (msg.t === 'start' && host && this.phase === 'lobby') {
       if (this.canStart().ok) return this.start();
     } else if (msg.t === 'next' && host && this.phase === 'reveal') {
@@ -286,7 +287,7 @@ export class Game {
 
   // Après le classement : la roue si le sort le veut, puis la manche suivante.
   advance() {
-    if (this.phase === 'ranking' && this.round.first && this.index + 1 < this.deck.length && chance(this.wheelChance)) return this.spin();
+    if (this.phase === 'ranking' && this.settings.wheel && this.round.first && this.index + 1 < this.deck.length && chance(this.wheelChance)) return this.spin();
     if (this.phase !== 'ranking' && this.phase !== 'wheel') return;
     clearTimeout(this.timer);
     this.index++;

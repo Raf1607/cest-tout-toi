@@ -195,14 +195,32 @@
   .fx { text-align: center; font-size: 14px; font-weight: 700; padding: 6px 10px; border-radius: 10px; }
   .fx.good { background: rgba(82, 209, 143, .15); color: var(--good); }
   .fx.bad { background: rgba(255, 122, 107, .15); color: var(--bad); }
-  .wheel-box { position: relative; width: min(84vw, 340px); aspect-ratio: 1; margin: 18px auto 4px; }
-  .pointer { position: absolute; top: -12px; left: 50%; translate: -50% 0; z-index: 2; width: 0; height: 0; border: 15px solid transparent; border-top: 26px solid var(--ink); border-bottom: 0; }
-  .wheel { position: absolute; inset: 0; border-radius: 50%; border: 5px solid var(--ink); overflow: hidden; transition: transform 3.8s cubic-bezier(.12, .72, .1, 1);
+  .wheel-box { position: relative; width: min(84vw, 340px); aspect-ratio: 1; margin: 26px auto 18px; }
+  .pointer { position: absolute; top: -8px; left: 50%; margin-left: -15px; z-index: 4; width: 0; height: 0; border: 15px solid transparent; border-top: 28px solid var(--accent); border-bottom: 0; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .6)); transform-origin: top center; }
+  .wheel-box.spinning .pointer { animation: tick .13s ease-in-out infinite alternate; }
+  .wheel-box.done .pointer { animation: tick .3s ease-out 2 alternate; }
+  .lights { position: absolute; inset: -12px; border-radius: 50%; background: #2a2437; box-shadow: 0 0 34px rgba(255, 207, 63, .28), inset 0 0 0 2px var(--accent); }
+  .lights i { position: absolute; top: 50%; left: 50%; width: 9px; height: 9px; margin: -4.5px; border-radius: 50%; background: var(--accent); transform: rotate(var(--a)) translateY(calc(min(42vw, 170px) + 6px)); animation: blink .5s steps(2) infinite; animation-delay: calc(var(--n) * .25s); box-shadow: 0 0 8px var(--accent); }
+  .wheel-box.spinning .lights i { animation-duration: .18s; animation-delay: calc(var(--n) * .09s); }
+  .spot { position: absolute; inset: 0; border-radius: 50%; z-index: 2; opacity: 0; pointer-events: none; background: conic-gradient(from -30deg, rgba(255, 255, 255, .28) 0 60deg, rgba(10, 8, 16, .62) 60deg 360deg); transition: opacity .35s; }
+  .wheel-box.done .spot { opacity: 1; animation: spotPulse .7s ease-in-out infinite alternate; }
+  .hub { position: absolute; top: 50%; left: 50%; width: 19%; height: 19%; translate: -50% -50%; z-index: 3; border-radius: 50%; background: #2a2437; border: 4px solid var(--accent); box-shadow: 0 2px 10px rgba(0, 0, 0, .55); }
+  .wheel-box.spinning .hub { animation: hubGlow .4s ease-in-out infinite alternate; }
+  .wheel-box.bonus .lights { box-shadow: 0 0 50px rgba(82, 209, 143, .75), inset 0 0 0 2px var(--good); }
+  .wheel-box.malus .lights { box-shadow: 0 0 50px rgba(255, 122, 107, .8), inset 0 0 0 2px var(--bad); }
+  .wheel-box.malus { animation: wheelShake .45s ease-in-out; }
+  .wheel-box s { position: absolute; width: 8px; height: 12px; border-radius: 2px; z-index: 5; pointer-events: none; opacity: 0; animation: confetti 1s ease-out forwards; }
+  @keyframes tick { from { rotate: -9deg; } to { rotate: 9deg; } }
+  @keyframes blink { 50% { opacity: .22; } }
+  @keyframes spotPulse { to { filter: brightness(1.35); } }
+  @keyframes hubGlow { to { box-shadow: 0 0 22px var(--accent); } }
+  @keyframes wheelShake { 20% { translate: -9px 0; } 40% { translate: 8px 0; } 60% { translate: -6px 0; } 80% { translate: 4px 0; } }
+  .wheel { position: absolute; inset: 0; border-radius: 50%; border: 4px solid #1b1824; overflow: hidden; box-shadow: inset 0 0 26px rgba(0, 0, 0, .4); transition: transform 3.8s cubic-bezier(.12, .72, .1, 1);
     --bonus: #2f9e6e; --bonus-2: #47b985; --malus: #d9503f; --malus-2: #ee6f5e; }
   .wheel span { position: absolute; top: 0; left: 50%; height: 50%; width: 80px; margin-left: -40px; transform-origin: bottom center; display: flex; justify-content: center; padding-top: 14px; }
   .wheel b { color: #fff; font: 800 13px/1.15 var(--display); text-align: center; }
   .wheel-result { min-height: 70px; text-align: center; font: 800 19px/1.3 var(--display); opacity: 0; transform: scale(.8); transition: opacity .3s, transform .4s cubic-bezier(.2, 1.6, .4, 1); padding: 6px; }
-  .wheel-result.show { opacity: 1; transform: none; }
+  .wheel-result.show { opacity: 1; transform: none; text-shadow: 0 0 18px currentColor; }
   .wheel-result.bonus { color: var(--good); }
   .wheel-result.malus { color: var(--bad); }
   .board { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
@@ -249,7 +267,7 @@
   .portrait span { background: var(--bubble); color: var(--bubble-ink); border-radius: 12px 12px 12px 4px; padding: 4px 10px; font-weight: 600; font-size: 15px; }
 
   @media (min-width: 520px) { #app { padding-top: 32px; } }
-  @media (prefers-reduced-motion: reduce) { .bubble, .answer, .slide, .slide img, .board li, .board b, .board s { animation: none !important; } .reacts span { animation: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .bubble, .answer, .slide, .slide img, .board li, .board b, .board s, .lights i, .pointer, .hub, .spot, .wheel-box, .wheel-box s { animation: none !important; } .reacts span { animation: none; opacity: 1; } }
 </style>
 </head>
 <body>
@@ -263,13 +281,13 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311421",
-  "./js/tics.js": "./js/tics.js?v=202610311421",
-  "./js/game.js": "./js/game.js?v=202610311421",
-  "./js/net.js": "./js/net.js?v=202610311421",
-  "./js/media.js": "./js/media.js?v=202610311421"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311440",
+  "./js/tics.js": "./js/tics.js?v=202610311440",
+  "./js/game.js": "./js/game.js?v=202610311440",
+  "./js/net.js": "./js/net.js?v=202610311440",
+  "./js/media.js": "./js/media.js?v=202610311440"
 } }
 </script>
-<script type="module" src="js/app.js?v=202610311421"></script>
+<script type="module" src="js/app.js?v=202610311440"></script>
 </body>
 </html>

@@ -157,6 +157,18 @@ assert.equal(media.phase, 'end');
   }
   clearTimeout(w.timer);
   assert.ok(seen.size >= 2, 'la roue varie');
+  // Roue désactivée par l'hôte : elle ne sort jamais.
+  const off = new Game(analysis, 'OFF', 'h', () => {});
+  off.wheelChance = 1;
+  off.join('b');
+  off.handle('h', { t: 'claim', author: 'Julie Moreau' });
+  off.handle('b', { t: 'claim', author: 'Karim B' });
+  off.handle('h', { t: 'settings', settings: { wheel: false } });
+  off.handle('h', { t: 'start' });
+  off.handle('b', { t: 'vote', n: 1, author: 'Karim B' });
+  off.reveal(); off.next(); off.advance();
+  assert.equal(off.phase, 'question', 'pas de roue quand elle est désactivée');
+  clearTimeout(off.timer);
   // Bouclier : il bloque un malus, une seule fois.
   const s = new Game(analysis, 'BOUC', 'h', () => {});
   s.wheelChance = 0;

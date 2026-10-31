@@ -304,6 +304,10 @@ function lobbyScreen() {
         <span>Inclure les membres absents${v.absentCount ? ` <small>(${v.absentCount})</small>` : ''}</span>
         <input type="checkbox" data-input="absent" ${v.settings.absent ? 'checked' : ''}>
       </label>
+      <label class="setting toggle">
+        <span>Roue de la fortune <small>(bonus et malus au hasard entre les manches)</small></span>
+        <input type="checkbox" data-input="wheel" ${v.settings.wheel ? 'checked' : ''}>
+      </label>
       ${v.photoCount ? `
       <label class="setting toggle">
         <span>Questions sur les photos <small>(n'importe quelle photo du groupe peut s'afficher)</small></span>
@@ -423,9 +427,12 @@ function wheelScreen() {
   return `
     <header class="brand small"><h1>Roue de la fortune</h1></header>
     <div class="wheel-box">
+      <div class="lights">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20}deg;--n:${i % 2}"></i>`).join('')}</div>
       <div class="pointer"></div>
       <div class="wheel" style="background:conic-gradient(${slices})">${WHEEL.map((s, i) =>
         `<span style="transform:rotate(${(i + 0.5) * angle}deg)"><b>${esc(s.label)}</b></span>`).join('')}</div>
+      <div class="spot"></div>
+      <div class="hub"></div>
     </div>
     <p class="wheel-result" data-result></p>`;
 }
@@ -447,13 +454,28 @@ function spinWheel() {
   const angle = 360 / WHEEL.length;
   const jitter = (Math.random() - 0.5) * angle * 0.7;   // jamais sur la ligne entre deux cases
   const stop = 360 * 6 - (view.wheel.index + 0.5) * angle + jitter;
-  boardTimers.push(setTimeout(() => { wheel.style.transform = `rotate(${stop}deg)`; }, 60));
-  boardTimers.push(setTimeout(() => {
+  const stage = $app.querySelector('.wheel-box');
+  boardTimers.push(setTimeout(() => { wheel.style.transform = `rotate(${stop}deg)`; stage.classList.add('spinning'); }, 60));
+  boardTimers.push(setTimeout(() => {         // arrêt : la case gagnante s'illumine, puis confettis ou secousse
     const seg = WHEEL[view.wheel.index];
     const box = $app.querySelector('[data-result]');
+    stage.classList.remove('spinning');
+    stage.classList.add('done', view.wheel.shielded ? 'shield' : seg.kind);
     box.className = `wheel-result show ${view.wheel.shielded ? '' : seg.kind}`;
     box.innerHTML = wheelMessage();
+    if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(seg.kind === 'bonus' ? 60 : [60, 50, 60]);
+    if (seg.kind === 'bonus' && !view.wheel.shielded) confetti(stage);
   }, WHEEL_MS - 2000));
+}
+
+function confetti(parent) {
+  const colors = ['#ffcf3f', '#52d18f', '#ff7a6b', '#7fb4ff', '#f5f1e8'];
+  for (let i = 0; i < 34; i++) {
+    const c = document.createElement('s');
+    const a = Math.random() * Math.PI * 2, d = 90 + Math.random() * 130;
+    c.style.cssText = `left:50%;top:50%;background:${colors[i % colors.length]};--x:${Math.round(Math.cos(a) * d)}px;--y:${Math.round(Math.sin(a) * d)}px;--r:${Math.round(Math.random() * 720)}deg;animation-delay:${Math.round(Math.random() * 120)}ms`;
+    parent.append(c);
+  }
 }
 
 let boardTimers = [];
@@ -605,6 +627,7 @@ $app.addEventListener('change', e => {
   if (input === 'absent') send({ t: 'settings', settings: { absent: e.target.checked } });
   if (input === 'photos') send({ t: 'settings', settings: { photos: e.target.checked } });
   if (input === 'slideshow') send({ t: 'settings', settings: { slideshow: e.target.checked } });
+  if (input === 'wheel') send({ t: 'settings', settings: { wheel: e.target.checked } });
 });
 
 $app.addEventListener('submit', e => {
