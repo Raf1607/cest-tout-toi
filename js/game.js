@@ -8,7 +8,7 @@ export const SECONDS = [15, 25, 40];
 const GAIN = 2, LOSS = 1;   // points par bonne et par mauvaise réponse (jamais en dessous de zéro)
 const AFTER_FIRST_VOTE = 7000;   // dès le premier vote, il ne reste que ce temps aux autres
 const ALL_VOTED_PAUSE = 600;     // tout le monde a voté : petite pause avant la réponse
-const RANKING_MS = 5000;         // durée de l'écran de classement entre deux manches
+const RANKING_MS = 3000;         // durée de l'écran de classement entre deux manches
 
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -226,7 +226,7 @@ export class Game {
     this.changed();
   }
 
-  // Après la réponse : le classement animé pendant 5 secondes, puis la suite toute seule.
+  // Après la réponse : le classement animé pendant 3 secondes, puis la suite toute seule.
   next() {
     const place = id => { const i = this.order.indexOf(id); return i < 0 ? this.order.length : i; };
     const shown = [...this.players.values()].filter(p => p.author || this.round.votes[p.id]);

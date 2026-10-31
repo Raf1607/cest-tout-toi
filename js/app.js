@@ -393,7 +393,7 @@ function highlight(text, part) {
   return esc(text.slice(0, i)) + `<mark>${esc(text.slice(i, i + part.length))}</mark>` + esc(text.slice(i + part.length));
 }
 
-// Classement entre deux manches (5 secondes) : chacun part de son ancienne place, les points
+// Classement entre deux manches (3 secondes) : chacun part de son ancienne place, les points
 // s'ajoutent, puis les joueurs glissent vers leur nouvelle place.
 function rankingScreen() {
   const { n, total, rows } = view.ranking;
@@ -401,7 +401,7 @@ function rankingScreen() {
   return `
     <header class="brand small"><h1>Classement</h1><p>Après la manche ${n}/${total}</p></header>
     <ol class="board" style="height:${rows.length * step}px">${rows.map((p, now) => `
-      <li data-now="${now}" data-was="${p.was}" class="${p.id === view.me ? 'me' : ''}" style="height:${step - 8}px;transform:translateY(${p.was * step}px)">
+      <li data-now="${now}" data-was="${p.was}" class="${p.id === view.me ? 'me' : ''} ${p.delta > 0 ? 'gain' : p.delta < 0 ? 'loss' : ''} ${p.was > now ? 'rise' : ''}" style="--i:${p.was};height:${step - 8}px;transform:translateY(${p.was * step}px)">
         <em>${p.was + 1}</em>
         <span class="name">${esc(p.id === view.me ? `${p.name} (toi)` : p.name)}</span>
         ${p.delta ? `<i class="${p.delta > 0 ? 'up' : 'down'}">${p.delta > 0 ? '+' : '−'}${Math.abs(p.delta)}</i>` : ''}
@@ -417,16 +417,25 @@ function animateBoard() {
   const rows = [...board.children];
   const step = rows.length > 1 ? parseFloat(rows[0].style.height) + 8 : 0;
   const later = (ms, fn) => boardTimers.push(setTimeout(fn, ms));
-  later(500, () => {                          // les points gagnés ou perdus
+  later(350, () => {                          // les points gagnés ou perdus
     board.classList.add('scored');
     for (const li of rows) li.querySelector('b').textContent = li.querySelector('b').dataset.to;
   });
-  later(1500, () => {                         // puis chacun rejoint sa nouvelle place
+  later(950, () => {                          // puis chacun rejoint sa nouvelle place
     board.classList.add('moving');
     for (const li of rows) {
       li.style.zIndex = +li.dataset.was > +li.dataset.now ? 2 : 1;   // ceux qui montent passent devant
       li.style.transform = `translateY(${li.dataset.now * step}px)`;
       li.querySelector('em').textContent = +li.dataset.now + 1;
+    }
+  });
+  later(1850, () => {                         // le premier brille, et les confettis partent de sa ligne
+    rows.find(li => li.dataset.now === '0')?.classList.add('lead');
+    const colors = ['#ffcf3f', '#52d18f', '#ff7a6b', '#7fb4ff', '#f5f1e8'];
+    for (let i = 0; i < 26; i++) {
+      const c = document.createElement('s');
+      c.style.cssText = `left:${10 + Math.random() * 80}%;background:${colors[i % colors.length]};--x:${Math.round(Math.random() * 120 - 60)}px;--y:${Math.round(90 + Math.random() * 120)}px;--r:${Math.round(Math.random() * 540)}deg;animation-delay:${Math.round(Math.random() * 180)}ms`;
+      board.append(c);
     }
   });
 }

@@ -191,7 +191,23 @@
   .votes .down { color: var(--bad); }
   .votes .pts i { font-style: normal; font-weight: 700; font-size: 13px; }
   .board { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
-  .board li { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--surface); border-radius: 14px; font-size: 17px; transition: transform 1.6s cubic-bezier(.3, 1.2, .5, 1); }
+  .board li { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--surface); border-radius: 14px; font-size: 17px; overflow: hidden;
+    transition: transform .85s cubic-bezier(.3, 1.35, .5, 1), scale .4s ease-out, background .4s;
+    animation: boardIn .3s ease-out backwards; animation-delay: calc(var(--i) * 50ms); }
+  .board.scored li.gain { animation: glowGain .7s ease-out; }
+  .board.scored li.loss { animation: shake .4s ease-in-out; }
+  .board.moving li.rise { scale: 1.04; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+  .board li.lead { background: linear-gradient(100deg, #ffcf3f, #ffe48a); color: var(--accent-ink); scale: 1; }
+  .board li.lead em, .board li.lead b, .board li.lead .name { color: var(--accent-ink); }
+  .board li.lead::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -50%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .75), transparent); animation: sheen .8s ease-out forwards; }
+  .board.scored b { animation: bump .45s cubic-bezier(.2, 1.8, .4, 1); }
+  .board s { position: absolute; top: 20px; width: 8px; height: 12px; border-radius: 2px; z-index: 3; pointer-events: none; opacity: 0; animation: confetti 1s ease-out forwards; }
+  @keyframes boardIn { from { opacity: 0; translate: 40px 0; } }
+  @keyframes glowGain { 0%, 100% { box-shadow: 0 0 0 0 rgba(82, 209, 143, 0); } 35% { box-shadow: 0 0 22px 3px rgba(82, 209, 143, .75); } }
+  @keyframes shake { 25% { translate: -6px 0; } 50% { translate: 5px 0; } 75% { translate: -3px 0; } }
+  @keyframes bump { 40% { scale: 1.5; } }
+  @keyframes sheen { to { left: 110%; } }
+  @keyframes confetti { 0% { opacity: 1; translate: 0 0; rotate: 0deg; } 100% { opacity: 0; translate: var(--x) var(--y); rotate: var(--r); } }
   .board li.me { outline: 2px solid var(--accent); }
   .board em { font: 800 20px var(--display); color: var(--muted); width: 1.4em; }
   .board .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -201,6 +217,7 @@
   .board i.down, .board u.down { color: var(--bad); }
   .board u { text-decoration: none; font-size: 13px; opacity: 0; transition: opacity .4s; }
   .board.moving u { opacity: 1; }
+  .board li.lead u { color: var(--accent-ink); }
   .board b { font: 800 24px var(--display); color: var(--accent); min-width: 1.6em; text-align: right; }
   .votes .pts b { font: 800 20px var(--display); color: var(--accent); }
 
@@ -217,7 +234,7 @@
   .portrait span { background: var(--bubble); color: var(--bubble-ink); border-radius: 12px 12px 12px 4px; padding: 4px 10px; font-weight: 600; font-size: 15px; }
 
   @media (min-width: 520px) { #app { padding-top: 32px; } }
-  @media (prefers-reduced-motion: reduce) { .bubble, .answer, .slide, .slide img { animation: none; } .reacts span { animation: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .bubble, .answer, .slide, .slide img, .board li, .board b, .board s { animation: none !important; } .reacts span { animation: none; opacity: 1; } }
 </style>
 </head>
 <body>
@@ -231,13 +248,13 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311405",
-  "./js/tics.js": "./js/tics.js?v=202610311405",
-  "./js/game.js": "./js/game.js?v=202610311405",
-  "./js/net.js": "./js/net.js?v=202610311405",
-  "./js/media.js": "./js/media.js?v=202610311405"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311409",
+  "./js/tics.js": "./js/tics.js?v=202610311409",
+  "./js/game.js": "./js/game.js?v=202610311409",
+  "./js/net.js": "./js/net.js?v=202610311409",
+  "./js/media.js": "./js/media.js?v=202610311409"
 } }
 </script>
-<script type="module" src="js/app.js?v=202610311405"></script>
+<script type="module" src="js/app.js?v=202610311409"></script>
 </body>
 </html>
