@@ -496,7 +496,8 @@ function confetti(parent) {
 
 // Montage de fin façon edit : les médias défilent en rythme sur la phonk, avec un effet par plan.
 const CUTS = ['punch', 'shake', 'flash', 'glitch', 'noir', 'tilt', 'slide'];
-const RHYTHM = [2, 1, 1, 2, 1, 1, 1, 1];      // durée de chaque plan, en temps
+// Un cycle : photo, sticker, photo, sticker, puis un message qu'on a le temps de lire (durées en temps).
+const CYCLE = [['photo', 1], ['sticker', 1], ['photo', 1], ['sticker', 1], ['quote', 3]];
 
 function montageScreen() {
   return `<div class="edit"><div class="edit-frame" data-frame></div></div>
@@ -507,30 +508,43 @@ function runMontage() {
   const frame = $app.querySelector('[data-frame]');
   if (!frame) return;
   const beat = 60000 / BPM, { items, quotes } = view.montage;
-  const stop = playPhonk(MONTAGE_MS / 1000);
-  boardTimers.push({ stop });
-  const show = (html, fx) => {
-    frame.className = 'edit-frame';
+  boardTimers.push({ stop: playPhonk(MONTAGE_MS / 1000) });
+  const show = (html, fx, cls = '') => {
+    frame.className = `edit-frame ${cls}`;
     frame.innerHTML = html;
     void frame.offsetWidth;                   // relance l'animation même si l'effet est le même
     frame.classList.add(fx);
   };
-  const text = (t, cls) => `<p class="edit-text ${cls}">${esc(t)}</p>`;
-  show(text('WHO IS BRO ?', 'big'), 'shake');
-  let at = beat * 8, i = 0, cut = 0, q = 0;
-  const end = MONTAGE_MS - beat * 8;
-  while (at < end) {
-    const n = cut++, length = RHYTHM[n % RHYTHM.length] * beat;
+  const title = t => `<p class="edit-text big">${esc(t)}</p>`;
+  const media = m => {
+    const url = mediaCache.get(m.id);
+    return m.type === 'video' ? `<video src="${url}" autoplay loop muted playsinline></video>` : `<img src="${url}" alt="">`;
+  };
+  const seen = { photo: 0, sticker: 0, quote: 0 };
+  // Pioche dans les médias arrivés : la sorte demandée, sinon n'importe laquelle.
+  const nextMedia = want => {
+    const ready = items.filter(m => mediaCache.has(m.id));
+    const same = ready.filter(m => (want === 'photo') === (m.kind === 'photo'));
+    const pool = same.length ? same : ready;
+    return pool.length ? pool[seen[want]++ % pool.length] : null;
+  };
+  show(title('WHO IS BRO ?'), 'shake');
+  const end = MONTAGE_MS - beat * 4;
+  let at = beat * 4;
+  for (let n = 0; at < end; n++) {
+    const [want, beats] = CYCLE[n % CYCLE.length];
     boardTimers.push(setTimeout(() => {
-      if (n % 7 === 6 && quotes.length) return show(text(quotes[q++ % quotes.length], 'quote'), 'punch');
-      const ready = items.filter(m => mediaCache.has(m.id));
-      if (!ready.length) return show(text('WHO IS BRO ?', 'big'), CUTS[n % CUTS.length]);
-      const m = ready[i++ % ready.length], url = mediaCache.get(m.id);
-      show(m.type === 'video' ? `<video src="${url}" autoplay loop muted playsinline></video>` : `<img src="${url}" alt="">`, CUTS[Math.floor(Math.random() * CUTS.length)]);
+      const fx = CUTS[Math.floor(Math.random() * CUTS.length)];
+      if (want === 'quote' && quotes.length) {
+        const q = quotes[seen.quote++ % quotes.length];
+        return show(`<div class="edit-quote"><p>${esc(q.text)}</p><small>${esc(q.author)}</small></div>`, 'punch');
+      }
+      const m = nextMedia(want === 'quote' ? 'photo' : want);
+      if (m) show(media(m), fx, m.kind === 'photo' ? '' : 'sticker');
     }, at));
-    at += length;
+    at += beats * beat;
   }
-  boardTimers.push(setTimeout(() => show(text('ET LE GAGNANT EST…', 'big'), 'punch'), end));
+  boardTimers.push(setTimeout(() => show(title('ET LE GAGNANT EST…'), 'punch'), end));
 }
 
 let boardTimers = [];

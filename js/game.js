@@ -38,7 +38,7 @@ function scramble(name) {
   }).join(' ');
 }
 
-export const MONTAGE_MS = 18000;   // montage de fin, avant le classement final
+export const MONTAGE_MS = 15000;   // montage de fin, avant le classement final
 const MONTAGE_MIN_ITEMS = 3;
 const RANKING_MS = 3000;         // durée de l'écran de classement entre deux manches
 
@@ -308,6 +308,12 @@ export class Game {
     this.changed();
   }
 
+  // Messages du montage : les cultes d'abord, puis les plus typiques de chacun.
+  montageQuotes() {
+    const typical = shuffle(this.analysis.authors.flatMap(a => a.tics.filter(t => t.kind === 'message').map(t => ({ author: a.name, text: t.text }))));
+    return [...(this.analysis.cults || []), ...typical].slice(0, 8).map(({ author, text }) => ({ author, text }));
+  }
+
   // Médias du montage de fin (export avec médias, si l'hôte a laissé l'option activée).
   montageItems() {
     return this.settings.slideshow ? this.analysis.montage || [] : [];
@@ -379,8 +385,8 @@ export class Game {
     }
     if (this.phase === 'montage') {
       v.montage = {
-        items: this.montageItems().map(m => mediaOf(m)),
-        quotes: (this.analysis.cults || []).slice(0, 3).map(c => c.text),
+        items: this.montageItems().map(m => ({ ...mediaOf(m), kind: m.kind })),
+        quotes: this.montageQuotes(),
       };
     }
     if (this.phase === 'wheel') {

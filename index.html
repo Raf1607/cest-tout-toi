@@ -196,7 +196,11 @@
   .edit-frame img, .edit-frame video { width: 100%; height: 100%; object-fit: contain; }
   .edit-text { color: #fff; text-align: center; padding: 0 22px; font-family: var(--display); font-weight: 800; }
   .edit-text.big { font-size: clamp(38px, 12vw, 64px); line-height: 1.05; text-transform: uppercase; }
-  .edit-text.quote { font-size: 26px; line-height: 1.25; color: var(--accent); }
+  .edit-quote { max-width: 88%; background: var(--bubble); color: var(--bubble-ink); padding: 20px 22px; border-radius: 24px 24px 24px 6px; font: 800 25px/1.25 var(--display); overflow-wrap: anywhere; }
+  .edit-quote p { margin: 0; }
+  .edit-quote small { display: block; margin-top: 8px; font: 700 14px system-ui, sans-serif; color: #6b6478; }
+  .edit-frame.sticker { background: var(--accent); }
+  .edit-frame.sticker img, .edit-frame.sticker video { width: 78%; height: 78%; filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .4)); }
   .edit-frame.punch > * { animation: editPunch .32s cubic-bezier(.1, 1.4, .3, 1); }
   .edit-frame.shake > * { animation: editShake .3s linear; }
   .edit-frame.flash { animation: editFlash .24s ease-out; }
@@ -301,15 +305,15 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311741",
-  "./js/tics.js": "./js/tics.js?v=202610311741",
-  "./js/game.js": "./js/game.js?v=202610311741",
-  "./js/net.js": "./js/net.js?v=202610311741",
-  "./js/media.js": "./js/media.js?v=202610311741",
-  "./js/records.js": "./js/records.js?v=202610311741",
-  "./js/phonk.js": "./js/phonk.js?v=202610311741"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202610311749",
+  "./js/tics.js": "./js/tics.js?v=202610311749",
+  "./js/game.js": "./js/game.js?v=202610311749",
+  "./js/net.js": "./js/net.js?v=202610311749",
+  "./js/media.js": "./js/media.js?v=202610311749",
+  "./js/records.js": "./js/records.js?v=202610311749",
+  "./js/phonk.js": "./js/phonk.js?v=202610311749"
 } }
 </script>
-<script type="module" src="js/app.js?v=202610311741"></script>
+<script type="module" src="js/app.js?v=202610311749"></script>
 </body>
 </html>

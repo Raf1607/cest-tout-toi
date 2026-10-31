@@ -173,7 +173,7 @@ export function bestPhotos(chat, files, max = 10) {
 
 // Messages cultes : ceux qui ont fait le plus réagir le groupe (emojis et réponses des autres juste
 // après), à condition d'être montrables tels quels.
-export function cultMessages(chat, max = 5) {
+export function cultMessages(chat, max = 8) {
   const timeline = chat.timeline || [];
   const out = [];
   timeline.forEach((e, i) => {
@@ -205,7 +205,7 @@ export function montageItems(chat, files, max = 24) {
     if (!counts.has(key)) counts.set(key, { file: m.file, kind: m.kind, n: 0 });
     counts.get(key).n++;
   }
-  const extras = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 8).map(({ file, kind }) => ({ file, kind }));
+  const extras = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 12).map(({ file, kind }) => ({ file, kind }));
   const photos = bestPhotos(chat, files, max - extras.length).map(({ file }) => ({ file, kind: 'photo' }));
   return [...photos, ...extras];
 }
