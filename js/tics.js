@@ -10,6 +10,8 @@
 // On exige un écart d'au moins 2,5, et que a devance nettement chacun des autres (test de deux
 // proportions contre le deuxième : un petit bavard peut avoir un taux élevé par hasard).
 // Si ça laisse trop peu de tics (gros groupe, tics peu marqués), on assouplit ces seuils.
+// Pour les mots et expressions, on veut de l'inhabituel : une seule personne (ou presque) doit les
+// employer, et les mots de tous les jours (« ok », « quoi »…) sont exclus d'office.
 // On écarte les tournures concentrées sur une seule conversation (un sujet, pas un tic),
 // les prénoms et les noms propres.
 //
@@ -27,11 +29,15 @@ const K = 30;
 const MAX_TICS = 12;
 // Du plus exigeant au plus souple ; lift : écart minimal, z : avance minimale sur le deuxième,
 // habit : écart minimal pour « qui envoie le plus de… » (être nettement en tête suffit).
+// exclusive : part minimale des utilisations d'un mot ou d'une expression qui doit venir de son « propriétaire ».
 const LEVELS = [
-  { lift: 2.5, z: 2.5, habit: 1.6 },
-  { lift: 2, z: 2, habit: 1.4 },
-  { lift: 1.6, z: 1.5, habit: 1.25 },
+  { lift: 2.5, z: 2.5, habit: 1.6, exclusive: 0.85 },
+  { lift: 2, z: 2, habit: 1.4, exclusive: 0.75 },
+  { lift: 1.6, z: 1.5, habit: 1.25, exclusive: 0.65 },
+  { lift: 1.4, z: 1, habit: 1.2, exclusive: 0.5 },
 ];
+const COHESION = 0.3;
+const MIN_WORD_USES = 5;   // un mot seul doit revenir plus qu'une expression pour être un vrai tic
 const MAX_MEDIA_BYTES = 3 * 1024 * 1024; // un sticker ou un GIF plus lourd ne sera pas envoyé aux joueurs
 const HABITS = { sticker: 'stickers', gif: 'GIF', photo: 'photos', video: 'vidéos', vocal: 'vocaux', media: 'médias' };
 
@@ -46,13 +52,14 @@ const DANGLING = new Set(`a à au aux avec ce ces cette d de des du dans en et j
   nos notre on ou par pour qu que qui s sa se ses si son sur t ta te tes ton tu un une vos votre y il ils elle elles nous
   vous c'est j'ai est`.split(/\s+/));
 
-// Tics connus, légèrement favorisés à score égal.
-const KNOWN = `du coup|en vrai|de ouf|genre|grave|wesh|frère|frérot|mdr|ptdr|jpp|osef|bref|voilà|carrément|tkt|t'inquiète|
-  askip|jsp|chaud|mec|wallah|sah|ouais|nan|bah|ben|bon ben|bon bah|allez|bisous|biz|bises|coucou|hello|yo|hey|stylé|ouf|
-  lourd|énorme|nickel|impec|cimer|franchement|clairement|littéralement|limite|sérieux|sérieusement|j'avoue|on verra|
-  c'est clair|trop bien|trop|ok ok|oklm|tranquille|tranquillou|vas-y|bg|frr|wsh|ptn|putain|bordel|zut|mince|oh là là|
-  ah bon|ah ouais|en mode|de fou|absolument|exactement|parfait|top|super|génial|cool|chouette|à plus|à toute|ciao|bisou|
-  la base|pas de souci|pas de soucis|aucun souci|t'as vu|tu vois|quoi|enfin bref|bon courage|en fait|au final|bon|ok`;
+// Mots de tous les jours : même si une seule personne les emploie, ils ne font pas une question.
+const BANAL = new Set(`ok okay oki okok oui ouais ouai non nan nope si quoi hein bon bah ben beh bé eh ah oh ha hé euh mh hum
+  merci stp svp pardon désolé désolée salut coucou hello hey yo bonjour bonsoir bonne bon soir nuit demain aujourd'hui hier
+  mdr mdrr mdrrr lol ptdr ptdrr xd haha hahaha ahah ahahah hihi héhé super cool top bien mal bof trop très vraiment
+  aussi encore déjà toujours jamais alors donc mais car parce puis après avant ici là voilà bref enfin juste tout tous
+  toute toutes rien personne quelqu'un chose truc machin faire fais fait dire dis dit voir vois vu aller vais va vas
+  venir viens vient peux peut veux veut sais sait faut pense crois moi toi lui nous vous eux c'est c'était ça cela
+  comme quand comment pourquoi où combien qui que quel quelle ouf grave genre carrément`.split(/\s+/));
 
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const TOKEN_RE = /(\p{Extended_Pictographic})|([\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*)|([!?]{2,}|\.{2,}|…)/gu;
@@ -226,7 +233,7 @@ function analyzeAt(chat, files, level) {
   const M = messages.length;
   const records = memberStats(chat);
   const active = perAll.filter(n => n >= MIN_MESSAGES).length;
-  const { lift, z, habit } = LEVELS[level];
+  const { lift, z, habit, exclusive } = LEVELS[level];
   const share = Math.min(0.34, 2 / Math.max(active, 1));   // dans un gros groupe, les autres réunis pèsent lourd
   const rule = { lift, z, share }, habitRule = { lift: habit, z, share };
 
@@ -270,21 +277,34 @@ function analyzeAt(chat, files, level) {
     if (st.mid >= 0.3 * st.c.reduce((x, y) => x + y, 0)) nameWords.add(key);
   }
 
-  const known = new Set(KNOWN.split('|').map(s => tokenize(s.trim()).map(t => t.k).join(' ')));
   const candidates = names.map(() => []);
-  // Une expression de plusieurs mots est plus rare qu'un mot seul, et bien plus drôle : seuils
-  // un peu plus souples et bonus au classement.
-  const phraseRule = { lift: lift * 0.8, z: z * 0.8, share };
+  // Une expression de plusieurs mots est plus drôle qu'un mot seul : bonus au classement.
+  // Mots et expressions : presque exclusifs à une personne ; le hasard est alors peu probable, donc pas de test z.
+  const wordRule = { lift: 1.5, z: -Infinity, share: exclusive };
+  const totals = new Map([...stats].map(([key, st]) => [key, st.c.reduce((x, y) => x + y, 0)]));
+  // Les mots d'une vraie expression vont ensemble : coupée en deux, chaque moitié (sauf si elle est bien
+  // plus fréquente, comme « je suis ») n'apparaît presque jamais sans l'autre. « jeudi mdrrr » échoue :
+  // ce sont deux bouts sans rapport qui se suivent par hasard.
+  const cohesive = (words, n) => {
+    for (let i = 1; i < words.length; i++) {
+      const parts = [totals.get(words.slice(0, i).join(' ')), totals.get(words.slice(i).join(' '))].filter(Boolean);
+      if (parts.length && n < COHESION * Math.min(...parts)) return false;
+    }
+    return true;
+  };
   for (const [key, st] of stats) {
     const words = bare(key).split(' ');
     if (words.some(w => nameWords.has(w))) continue;
+    if (words.every(w => BANAL.has(w) || STOP.has(w))) continue;
+    if (!cohesive(words, totals.get(key))) continue;
     const kind = kindOf(key);
+    const worded = kind !== 'emoji';
     for (let a = 0; a < A; a++) {
       const c = st.c[a];
-      if (c < MIN_USES || perAuthor[a] < MIN_MESSAGES || !spreadOk(st.spread[a], c)) continue;
-      const own = owned(st.c, perAuthor, a, words.length > 1 ? phraseRule : rule);
+      if (c < (worded && words.length === 1 ? MIN_WORD_USES : MIN_USES) || perAuthor[a] < MIN_MESSAGES || !spreadOk(st.spread[a], c)) continue;
+      const own = owned(st.c, perAuthor, a, worded ? wordRule : rule);
       if (!own) continue;
-      let boost = known.has(bare(key)) ? 1.3 : 1;
+      let boost = 1 + (c / (c + own.others));   // plus c'est exclusif, mieux c'est
       if (words.length > 1) boost *= 1.35;
       if (kind === 'debut' || kind === 'fin') boost *= 1.25;
       if (kind === 'ponct') boost *= 0.7;
