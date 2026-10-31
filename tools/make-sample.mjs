@@ -75,6 +75,7 @@ for (let d = 0; d < 130; d++) {
     if (p.name === 'Inès' && chance(0.12)) s = [s, pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE)].join(', ') + ', bref je vous raconterai tout en détail';
     for (const t of p.tics) s = t(s);
     if (chance(0.5)) s = cap(s);
+    if (p.name === 'Max' && chance(0.1)) s = s.toUpperCase();   // l'explosif du groupe
     lines.push({ day, minute, author: p.name, text: s });
     const m = MEDIA[p.name];
     for (const kind of ['sticker', 'gif', 'vocal', 'photo']) {

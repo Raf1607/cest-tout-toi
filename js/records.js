@@ -7,6 +7,15 @@ const SILENCE = 8 * 60;     // minutes : un message après ce silence relance le
 const PAVE = 200;           // caractères
 const RAFALE = 4;           // messages d'affilée
 const EMOJI = /\p{Extended_Pictographic}/gu;
+const LAUGH = /\b(?:mdr+|ptdr+|lol+|xd+|a?(?:ha){2,}h?|(?:ah){2,}a?|(?:hi){2,}|(?:hé){2,})\b/i;
+
+// Message écrit en majuscules : au moins 6 lettres, et presque aucune minuscule.
+function shouting(text) {
+  const upper = (text.match(/\p{Lu}/gu) || []).length, lower = (text.match(/\p{Ll}/gu) || []).length;
+  return upper >= 6 && upper >= 4 * lower;
+}
+
+const share = (n, total) => (total >= 20 ? n / total : null);
 
 const median = list => {
   const s = [...list].sort((a, b) => a - b);
@@ -17,7 +26,7 @@ const median = list => {
 export function memberStats(chat) {
   const stats = new Map();
   const get = name => {
-    if (!stats.has(name)) stats.set(name, { messages: 0, texts: 0, night: 0, paves: 0, relaunches: 0, bursts: 0, replies: [], emojis: new Map() });
+    if (!stats.has(name)) stats.set(name, { messages: 0, texts: 0, night: 0, early: 0, paves: 0, relaunches: 0, bursts: 0, shouts: 0, questions: 0, excited: 0, short: 0, laughs: 0, lastWords: 0, replies: [], emojis: new Map() });
     return stats.get(name);
   };
   let prev = null, run = 0;
@@ -25,15 +34,21 @@ export function memberStats(chat) {
     const s = get(e.author);
     s.messages++;
     if (e.hour < 6) s.night++;
+    if (e.hour >= 5 && e.hour < 8) s.early++;
     if (e.text) {
       s.texts++;
       if (e.text.length >= PAVE) s.paves++;
+      if (shouting(e.text)) s.shouts++;
+      if (e.text.includes('?')) s.questions++;
+      if (e.text.includes('!')) s.excited++;
+      if (e.text.trim().split(/\s+/).length <= 2) s.short++;
+      if (LAUGH.test(e.text)) s.laughs++;
       for (const emoji of new Set(e.text.match(EMOJI) || [])) s.emojis.set(emoji, (s.emojis.get(emoji) || 0) + 1);
     }
     if (prev) {
       const gap = e.t - prev.t;
       if (prev.author !== e.author && gap >= 0 && gap <= CONVERSATION) s.replies.push(gap);
-      if (gap >= SILENCE) s.relaunches++;
+      if (gap >= SILENCE) { s.relaunches++; get(prev.author).lastWords++; }
     }
     if (prev && prev.author === e.author) run++;
     else {
@@ -56,6 +71,13 @@ export function memberStats(chat) {
       pave: s.texts >= 20 ? s.paves / s.texts : null,
       paveCount: s.paves,
       bursts: s.bursts,
+      lastWords: s.lastWords,
+      shouts: share(s.shouts, s.texts), shoutCount: s.shouts,
+      questions: share(s.questions, s.texts), questionCount: s.questions,
+      excited: share(s.excited, s.texts), excitedCount: s.excited,
+      short: share(s.short, s.texts), shortCount: s.short,
+      laughs: share(s.laughs, s.texts), laughCount: s.laughs,
+      early: share(s.early, s.messages), earlyCount: s.early,
       emoji: fav && fav[1] >= 5 ? { e: fav[0], n: fav[1] } : null,
     });
   }
@@ -80,6 +102,22 @@ const RECORDS = [
     detail: (w, r) => `${w.s.paveCount} messages de plus de ${PAVE} caractères (${pct(w.s.pave)}), contre ${pct(r.s.pave)} pour ${r.name}.` },
   { id: 'rafale', text: 'envoie ses messages en rafale', value: s => s.bursts, min: 3,
     detail: (w, r) => `${w.s.bursts} fois au moins ${RAFALE} messages d'affilée (${r.name} : ${r.s.bursts}).` },
+  { id: 'bavard', text: "ne s'arrête jamais de parler", wholeGroup: true, value: s => s.messages,
+    detail: (w, r) => `${w.s.messages} messages, contre ${r.s.messages} pour ${r.name}.` },
+  { id: 'explosif', text: "est l'explosif du groupe (LES MAJUSCULES)", value: s => s.shouts, min: 0.01, need: s => s.shoutCount >= 3,
+    detail: (w, r) => `${w.s.shoutCount} messages TOUT EN MAJUSCULES, soit ${pct(w.s.shouts)} (${r.name} : ${pct(r.s.shouts)}).` },
+  { id: 'curieux', text: 'pose toujours des questions', value: s => s.questions, min: 0.05, need: s => s.questionCount >= 5,
+    detail: (w, r) => `${pct(w.s.questions)} de ses messages sont des questions, contre ${pct(r.s.questions)} pour ${r.name}.` },
+  { id: 'exclamation', text: "met des points d'exclamation partout", value: s => s.excited, min: 0.05, need: s => s.excitedCount >= 5,
+    detail: (w, r) => `Dans ${pct(w.s.excited)} de ses messages, contre ${pct(r.s.excited)} pour ${r.name}.` },
+  { id: 'telegraphe', text: 'répond en deux mots maximum', value: s => s.short, min: 0.1, need: s => s.shortCount >= 5,
+    detail: (w, r) => `${pct(w.s.short)} de ses messages font un ou deux mots, contre ${pct(r.s.short)} pour ${r.name}.` },
+  { id: 'rieur', text: 'rit de tout', value: s => s.laughs, min: 0.03, need: s => s.laughCount >= 5,
+    detail: (w, r) => `${pct(w.s.laughs)} de ses messages sont des rires, contre ${pct(r.s.laughs)} pour ${r.name}.` },
+  { id: 'dernier', text: 'a toujours le dernier mot', value: s => s.lastWords, min: 3,
+    detail: (w, r) => `${w.s.lastWords} fois le dernier message avant 8 h de silence (${r.name} : ${r.s.lastWords}).` },
+  { id: 'matinal', text: 'est debout avant tout le monde', value: s => s.early, min: 0.03, need: s => s.earlyCount >= 5,
+    detail: (w, r) => `${pct(w.s.early)} de ses messages entre 5 h et 8 h, contre ${pct(r.s.early)} pour ${r.name}.` },
 ];
 
 // members : [{ name, stats }] (les noms proposés au vote) ; everyone : tous les membres de la discussion,

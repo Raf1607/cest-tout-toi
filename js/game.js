@@ -44,6 +44,9 @@ function buildDeck(owners, total, used, withPhotos, extra) {
     let list = varied(fresh.length ? fresh : a.tics.slice());
     list = [...shuffle(list.slice(0, 5)), ...shuffle(list.slice(5))];   // un tic de chaque famille en tête
     (extra.get(a.name) || []).forEach((tic, i) => list.splice(1 + 2 * i, 0, tic));
+    // Son sticker ou GIF fétiche passe tôt : les titres ne doivent pas le repousser hors de la partie.
+    const fav = list.findIndex(t => t.kind === 'sticker' || t.kind === 'gif');
+    if (fav > 2) list.splice(2, 0, list.splice(fav, 1)[0]);
     if (withPhotos && a.photos?.length) {
       const photos = shuffle(a.photos.filter(f => !used.has(a.name + '|' + f)).slice());
       const card = file => ({ kind: 'photo', text: 'cette photo', file, uses: a.photoCount || a.photos.length, others: 0, topOther: null, example: null });
@@ -158,14 +161,14 @@ export class Game {
   start() {
     this.options = this.candidates();
     const owners = this.options.map(n => this.member(n)).filter(a => a.tics.length);
-    // Records (« qui répond le plus vite ? »…) : environ une manche sur quatre, les vrais records avant
+    // Records (« qui répond le plus vite ? »…) : environ une manche sur trois, les vrais records avant
     // les emojis préférés, et sans redire un emoji déjà dans les tics de son propriétaire.
     this.records = pickRecords(this.options.map(name => ({ name, stats: this.member(name).stats })), this.analysis.authors)
       .filter(c => c.tic.kind !== 'favori' || !this.member(c.owner).tics.some(t => t.text === c.tic.text));
     const fresh = this.records.filter(c => !this.used.has(ticId(c.owner, c.tic)));
     const pool = fresh.length ? fresh : this.records.slice();
     const chosen = [...shuffle(pool.filter(c => c.tic.kind === 'record')), ...shuffle(pool.filter(c => c.tic.kind !== 'record'))]
-      .slice(0, Math.max(1, Math.round(this.settings.rounds / 4)));
+      .slice(0, Math.max(1, Math.round(this.settings.rounds / 3)));
     // Et un message culte (celui qui a fait le plus réagir), si son auteur est dans la partie.
     const cult = (this.analysis.cults || []).find(c => this.options.includes(c.author) && !this.used.has(c.author + '|culte:' + c.text));
     if (cult) chosen.push({ owner: cult.author, tic: { kind: 'culte', id: 'culte:' + cult.text, text: cult.text, detail: cult.detail, uses: 0, others: 0 } });
