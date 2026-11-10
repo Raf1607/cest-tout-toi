@@ -7,7 +7,9 @@ const PREFIX = 'cest-tout-toi-v1-';
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const OPTIONS = { reliable: true, serialization: 'json' };
 
-const newCode = () => Array.from({ length: 4 }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
+// 6 lettres parmi 24 : 191 millions de codes, impossible de tomber sur une partie au hasard.
+export const CODE_LENGTH = 6;
+const newCode = () => Array.from(crypto.getRandomValues(new Uint32Array(CODE_LENGTH)), n => LETTERS[n % LETTERS.length]).join('');
 
 function openPeer(id) {
   return new Promise((resolve, reject) => {
@@ -47,8 +49,8 @@ export async function openRoom(onConnection) {
 // Invité : se connecte à la salle et s'y reconnecte tout seul après une coupure.
 // onStatus reçoit 'ok', 'lost' (reconnexion en cours), 'notfound' ou 'gone'.
 export class Client {
-  constructor(code, id, { onMessage, onStatus }) {
-    Object.assign(this, { code, id, onMessage, onStatus, conn: null, joined: false, failures: 0, timer: null });
+  constructor(code, id, name, { onMessage, onStatus }) {
+    Object.assign(this, { code, id, name, onMessage, onStatus, conn: null, joined: false, failures: 0, timer: null });
     this.peer = new Peer();
     keepRegistered(this.peer);
     this.peer.on('open', () => { if (!this.conn) this.connect(); });
@@ -71,7 +73,7 @@ export class Client {
       this.joined = true;
       this.failures = 0;
       this.onStatus('ok');
-      conn.send({ t: 'hello', id: this.id });
+      conn.send({ t: 'hello', id: this.id, name: this.name });
     });
     conn.on('data', msg => this.onMessage(msg));
     conn.on('close', () => { if (this.conn === conn) this.retry(); });

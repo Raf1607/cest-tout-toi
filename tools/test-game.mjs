@@ -195,4 +195,34 @@ assert.equal(media.phase, 'end');
   clearTimeout(s.timer);
 }
 
+// Verrouillage : un nouveau téléphone attend l'accord de l'hôte, ne reçoit rien avant, et
+// plus personne de nouveau n'entre une fois la partie lancée.
+{
+  const turned = [];
+  const g = new Game(analysis, 'LOCK', 'h', () => {});
+  g.onAdmit = (id, why) => turned.push([id, why]);
+  assert.equal(g.request('x', 'Intrus'), 'wait');
+  assert.ok(!g.players.has('x'), 'pas joueur tant que l\'hôte n\'a pas accepté');
+  g.handle('x', { t: 'claim', author: 'Karim B' });
+  assert.ok(![...g.players.values()].some(p => p.author === 'Karim B'), 'un téléphone en attente ne peut rien faire');
+  assert.deepEqual(g.view('h').waiting, [{ id: 'x', name: 'Intrus' }], 'l\'hôte voit la demande');
+  g.handle('b', { t: 'admit', id: 'x', ok: true });
+  assert.ok(!g.players.has('x'), 'seul l\'hôte peut accepter');
+  g.handle('h', { t: 'admit', id: 'x', ok: false });
+  assert.deepEqual(turned, [['x', 'refused']]);
+  assert.equal(g.request('x', 'Intrus'), 'refused', 'un refus est définitif');
+  assert.equal(g.request('b', 'Karim'), 'wait');
+  g.handle('h', { t: 'admit', id: 'b', ok: true });
+  assert.ok(g.players.has('b'));
+  g.handle('h', { t: 'claim', author: 'Julie Moreau' });
+  g.handle('b', { t: 'claim', author: 'Karim B' });
+  assert.equal(g.request('y', 'Retard'), 'wait');
+  g.handle('h', { t: 'start' });
+  assert.deepEqual(turned.at(-1), ['y', 'closed'], 'les demandes en attente sont refusées au lancement');
+  assert.equal(g.request('z', 'Inconnu'), 'closed', 'partie fermée une fois lancée');
+  g.leave('b');
+  assert.equal(g.request('b', 'Karim'), 'ok', 'un joueur accepté revient sans redemander');
+  clearTimeout(g.timer);
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

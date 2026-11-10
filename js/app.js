@@ -5,7 +5,7 @@ import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
 import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_MS, MONTAGE_MS } from './game.js';
 import { BPM, unlockAudio, playPhonk } from './phonk.js';
-import { openRoom, Client } from './net.js';
+import { openRoom, Client, CODE_LENGTH } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
 
 const $app = document.getElementById('app');
@@ -140,6 +140,20 @@ async function host(getFile) {
       share(game.round.card.tic);
       if (game.phase === 'reveal') share(game.deck[game.index + 1]?.tic);
     }
+    // Médias déjà partagés, pour un joueur qui arrive ou revient en cours de partie.
+    function catchUp(conn) {
+      const current = game.round && shared.get(game.round.card.tic.file);
+      if (current && game.phase !== 'lobby' && game.phase !== 'end') sendChunks(conn, current);
+      if (game.phase === 'end') for (const slide of game.slides()) if (shared.get(slide.id)) sendChunks(conn, shared.get(slide.id));
+      if (game.phase !== 'lobby') for (const m of game.montageItems()) if (shared.get(m.file)) sendChunks(conn, shared.get(m.file));
+    }
+    function turnAway(pid, why) {
+      const conn = conns.get(pid);
+      conns.delete(pid);
+      if (!conn?.open) return;
+      conn.send({ t: 'refused', why });
+      setTimeout(() => conn.close(), 500);
+    }
     const room = await openRoom(conn => {
       let pid = null;
       conn.on('data', msg => {
@@ -148,20 +162,25 @@ async function host(getFile) {
           const old = conns.get(pid);
           conns.set(pid, conn);
           if (old && old !== conn) old.close();
-          game.join(pid);
-          const current = game.round && shared.get(game.round.card.tic.file);
-          if (current && game.phase !== 'lobby' && game.phase !== 'end') sendChunks(conn, current);
-          if (game.phase === 'end') for (const slide of game.slides()) if (shared.get(slide.id)) sendChunks(conn, shared.get(slide.id));
-          if (game.phase !== 'lobby') for (const m of game.montageItems()) if (shared.get(m.file)) sendChunks(conn, shared.get(m.file));
-        } else if (pid) game.handle(pid, msg);
+          const answer = game.request(pid, typeof msg.name === 'string' ? msg.name : '');
+          if (answer === 'ok') catchUp(conn);
+          else if (answer === 'wait') conn.send({ t: 'wait' });
+          else turnAway(pid, answer);
+        } else if (pid && game.players.has(pid)) game.handle(pid, msg);   // les téléphones en attente ne peuvent rien faire
       });
       conn.on('close', () => { if (pid && conns.get(pid) === conn) { conns.delete(pid); game.leave(pid); } });
     });
+    const admitted = new Set();
     game = new Game(analysis, room.code, myId, () => {
-      for (const [pid, conn] of conns) if (conn.open) conn.send({ t: 'state', s: game.view(pid) });
+      for (const [pid, conn] of conns) {
+        if (!conn.open || !game.players.has(pid)) continue;     // seuls les joueurs acceptés reçoivent la partie
+        if (!admitted.has(pid)) { admitted.add(pid); catchUp(conn); }
+        conn.send({ t: 'state', s: game.view(pid) });
+      }
       show(game.view(myId));
       shareRound();
     });
+    game.onAdmit = turnAway;
     window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
     ui.screen = 'game';
     show(game.view(myId));
@@ -173,16 +192,27 @@ async function host(getFile) {
 
 // ——— Invité ———
 
-function join(code) {
+function join(code, name = store.get('ctt-name') || '') {
   code = code.toUpperCase().replace(/[^A-Z]/g, '');
-  if (code.length !== 4) return setUi({ error: 'Le code de la partie fait 4 lettres.' });
+  if (code.length !== CODE_LENGTH) return setUi({ screen: 'home', error: `Le code de la partie fait ${CODE_LENGTH} lettres.` });
+  name = name.trim().slice(0, 24);
+  if (!name) return setUi({ screen: 'home', error: 'Indique ton prénom : l\'hôte doit savoir qui demande à entrer.' });
+  store.set('ctt-name', name);
   if (params.get('p') !== code) history.replaceState(null, '', `?p=${code}`);
   setUi({ screen: 'busy', busy: `Connexion à la partie ${code}…`, error: '' });
   client?.close();
   const inbox = new MediaInbox((id, url) => { mediaCache.set(id, url); mediaArrived(id); });
-  client = new Client(code, myId, {
+  client = new Client(code, myId, name, {
     onMessage(msg) {
       if (msg?.t === 'state') { ui.screen = 'game'; show(msg.s); }
+      else if (msg?.t === 'wait') setUi({ screen: 'busy', busy: `Demande envoyée. L'hôte de la partie ${code} doit te faire entrer…` });
+      else if (msg?.t === 'refused') {
+        client?.close();
+        client = null;
+        view = null;
+        history.replaceState(null, '', location.pathname);
+        setUi({ screen: 'home', status: 'ok', error: msg.why === 'closed' ? 'La partie a déjà commencé : demande à l\'hôte d\'en relancer une.' : "L'hôte n'a pas accepté ta demande." });
+      }
       else if (msg?.t === 'media') inbox.add(msg);
     },
     onStatus(status) {
@@ -266,7 +296,8 @@ function homeScreen() {
     <section class="card">
       <h2>Rejoindre une partie</h2>
       <form class="join" data-form="join">
-        <input name="code" value="${esc(code)}" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Code de la partie">
+        <input name="code" value="${esc(code)}" maxlength="${CODE_LENGTH}" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Code de la partie">
+        <input name="name" value="${esc(store.get('ctt-name') || '')}" maxlength="24" placeholder="Ton prénom" autocomplete="given-name" aria-label="Ton prénom">
         <button class="primary" type="submit">Rejoindre</button>
       </form>
     </section>
@@ -313,6 +344,15 @@ function lobbyScreen() {
         ${v.host ? (canShare ? '<button class="small" data-act="share">Partager le lien</button>' : `<p class="url">${esc(inviteUrl(v.code))}</p>`) : ''}
       </div>
     </section>
+
+    ${v.waiting?.length ? `
+    <section class="card knock">
+      <h2>Demandes pour entrer</h2>
+      <p class="hint">N'accepte que tes amis : une fois dans la partie, on voit les noms et les messages du groupe.</p>
+      ${v.waiting.map(w => `<div class="ask"><span>${esc(w.name)}</span>
+        <button class="small" data-act="admit" data-id="${esc(w.id)}" data-ok="0">Refuser</button>
+        <button class="small primary" data-act="admit" data-id="${esc(w.id)}" data-ok="1">Accepter</button></div>`).join('')}
+    </section>` : ''}
 
     <h2>Qui es-tu dans la discussion&nbsp;?</h2>
     <div class="members">${v.members.map(m => {
@@ -696,6 +736,7 @@ $app.addEventListener('click', async e => {
     const name = 'WhatsApp Chat - Les Potes (avec médias).zip';
     host(() => fetch('samples/' + encodeURIComponent(name)).then(r => r.blob()).then(b => new File([b], name, { type: 'application/zip' })));
   }
+  else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
   else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });
   else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
   else if (act === 'set') send({ t: 'settings', settings: { [el.dataset.key]: Number(el.dataset.value) } });
@@ -723,12 +764,13 @@ $app.addEventListener('change', e => {
 
 $app.addEventListener('submit', e => {
   e.preventDefault();
-  if (e.target.dataset.form === 'join') join(new FormData(e.target).get('code') || '');
+  if (e.target.dataset.form === 'join') { const f = new FormData(e.target); join(f.get('code') || '', f.get('name') || ''); }
 });
 
 $app.addEventListener('input', e => {
   if (e.target.name === 'code') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
 });
 
-if (params.get('p')) join(params.get('p'));
+// Lien d'invitation : on rejoint tout de suite si on connaît déjà le prénom, sinon on le demande.
+if (params.get('p') && store.get('ctt-name')) join(params.get('p'));
 else render();

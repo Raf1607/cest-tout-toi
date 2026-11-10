@@ -130,13 +130,38 @@ export class Game {
     this.wheel = null;
     this.records = [];
     this.timer = null;
+    this.allowed = new Set();       // téléphones acceptés par l'hôte
+    this.waiting = new Map();       // id → { id, name, at } : en attente de l'hôte
+    this.refused = new Set();
     this.join(hostId);
     this.onChange = onChange;
   }
 
   member(name) { return this.analysis.authors.find(a => a.name === name); }
 
+  // Un téléphone qui se connecte n'entre pas tout seul : l'hôte l'accepte d'abord (sinon
+  // n'importe qui ayant le code recevrait les noms et les messages du groupe). Un joueur déjà
+  // accepté revient directement ; une fois la partie lancée, plus personne de nouveau n'entre.
+  // Renvoie 'ok', 'wait', 'refused' ou 'closed'.
+  request(id, name) {
+    if (this.allowed.has(id)) { this.join(id); return 'ok'; }
+    if (this.refused.has(id)) return 'refused';
+    if (this.phase !== 'lobby') return 'closed';
+    if (!this.waiting.has(id)) this.waiting.set(id, { id, name: String(name || '').trim().slice(0, 24) || 'Quelqu\'un', at: Date.now() });
+    this.changed();
+    return 'wait';
+  }
+
+  // L'hôte tranche ; onAdmit prévient l'app (envoi de l'état, ou refus et fermeture).
+  admit(id, ok) {
+    if (!this.waiting.delete(id)) return;
+    if (ok) this.join(id);
+    else { this.refused.add(id); this.onAdmit?.(id, 'refused'); this.changed(); }
+  }
+
   join(id) {
+    this.allowed.add(id);
+    this.waiting.delete(id);
     const p = this.players.get(id);
     if (p) p.connected = true;
     else this.players.set(id, { id, author: null, score: 0, connected: true, order: this.players.size });
@@ -144,6 +169,7 @@ export class Game {
   }
 
   leave(id) {
+    if (this.waiting.delete(id)) return this.changed();
     const p = this.players.get(id);
     if (!p) return;
     if (this.phase === 'lobby' && !p.author) this.players.delete(id);
@@ -175,8 +201,13 @@ export class Game {
       if (typeof s.photos === 'boolean') this.settings.photos = s.photos;
       if (typeof s.slideshow === 'boolean') this.settings.slideshow = s.slideshow;
       if (typeof s.wheel === 'boolean') this.settings.wheel = s.wheel;
+    } else if (msg.t === 'admit' && host && typeof msg.id === 'string') {
+      return this.admit(msg.id, !!msg.ok);
     } else if (msg.t === 'start' && host && this.phase === 'lobby') {
-      if (this.canStart().ok) return this.start();
+      if (this.canStart().ok) {
+        for (const id of [...this.waiting.keys()]) { this.waiting.delete(id); this.onAdmit?.(id, 'closed'); }
+        return this.start();
+      }
     } else if (msg.t === 'next' && host && this.phase === 'reveal') {
       return this.next();
     } else if (msg.t === 'skip' && host && this.phase === 'montage') {
@@ -356,6 +387,7 @@ export class Game {
       v.photoCount = this.analysis.authors.reduce((n, a) => n + (a.photos?.length || 0), 0);
       v.slideCount = this.analysis.slideshow?.length || 0;
       v.canStart = this.canStart();
+      if (id === this.hostId) v.waiting = [...this.waiting.values()].map(({ id: wid, name }) => ({ id: wid, name }));
     }
     if (this.phase === 'question' || this.phase === 'reveal') {
       const { n, card, votes, endsAt } = this.round;
