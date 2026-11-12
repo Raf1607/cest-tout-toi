@@ -45,11 +45,6 @@
   .summary li { padding-left: 26px; position: relative; margin-bottom: 8px; }
   .summary li:last-child { margin-bottom: 0; }
   .summary li::before { content: '✓'; position: absolute; left: 2px; color: var(--good); font-weight: 800; }
-  table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 12px; }
-  th, td { text-align: left; vertical-align: top; padding: 9px 8px 9px 0; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; font-size: 13px; }
-  td:first-child { font-weight: 600; white-space: nowrap; padding-right: 14px; }
-  @media (max-width: 420px) { td:first-child { white-space: normal; } }
 </style>
 </head>
 <body>
@@ -90,22 +85,8 @@
   <p>Conseil&nbsp;: partage le lien ou le QR code seulement avec les joueurs, pas dans un groupe plus large.</p>
 
   <h2>Comment les téléphones communiquent</h2>
-  <p>Les échanges passent en pair-à-pair (WebRTC), <b>chiffrés de bout en bout</b> entre les téléphones. Pour se trouver, les téléphones passent par des services techniques qui ne voient jamais le contenu de la partie&nbsp;:</p>
-  <ul>
-    <li><b>PeerJS</b> (serveur public de mise en relation)&nbsp;: il voit un identifiant technique de la partie et les adresses IP, le temps de mettre les téléphones en contact.</li>
-    <li><b>Google STUN</b>&nbsp;: aide chaque téléphone à connaître sa propre adresse sur internet.</li>
-    <li><b>Relais PeerJS</b>&nbsp;: si un réseau (certaines 4G, Wi-Fi d'entreprise) empêche la connexion directe, les échanges transitent par un relais, toujours chiffrés, donc illisibles pour lui.</li>
-  </ul>
-
-  <h2>Les autres services utilisés</h2>
-  <table>
-    <tr><th>Service</th><th>Pourquoi</th><th>Ce qu'il voit</th></tr>
-    <tr><td>GitHub Pages</td><td>héberge le site</td><td>ton adresse IP et la page demandée, comme tout site</td></tr>
-    <tr><td>jsDelivr, cdnjs</td><td>fournissent les bibliothèques du jeu (connexion, lecture du zip, QR code, écran allumé)</td><td>ton adresse IP</td></tr>
-    <tr><td>Google Fonts</td><td>police des titres</td><td>ton adresse IP</td></tr>
-    <tr><td>Abacus</td><td>compteur de parties de l'accueil</td><td>un simple « +1 » quand une partie est lancée, avec l'adresse IP de l'hôte&nbsp;; rien sur la partie</td></tr>
-  </table>
-  <p>Aucun de ces services ne reçoit la discussion, les noms ou les messages.</p>
+  <p>Les téléphones des joueurs se parlent <b>directement entre eux</b>, sans passer par un serveur de jeu. Les échanges sont <b>chiffrés</b>&nbsp;: personne d'autre ne peut les lire.</p>
+  <p>Un service public sert juste à mettre les téléphones en contact au début, un peu comme un standard téléphonique&nbsp;: il ne voit jamais ce qui se dit dans la partie.</p>
 
   <h2>Ce qui est gardé sur ton téléphone</h2>
   <p>Pour pouvoir revenir dans la partie après un rechargement, la page garde dans l'onglet un identifiant tiré au hasard et le prénom que tu as tapé pour entrer. Ils sont effacés quand tu fermes l'onglet. Pas de cookies.</p>
