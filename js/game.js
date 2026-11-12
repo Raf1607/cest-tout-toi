@@ -119,7 +119,7 @@ export class Game {
     this.code = code;
     this.hostId = hostId;
     this.players = new Map();       // id → { id, author, score, connected, order }
-    this.settings = { rounds: 10, seconds: 25, absent: false, photos: false, slideshow: true, wheel: true };
+    this.settings = { rounds: 10, seconds: 25, absent: true, photos: true, slideshow: true, wheel: true };   // tout coché par défaut
     this.phase = 'lobby';
     this.used = new Set();
     this.deck = [];
