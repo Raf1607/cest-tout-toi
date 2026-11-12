@@ -1,5 +1,6 @@
 // Génère des discussions WhatsApp factices (5 amis, chacun avec ses tics, ses stickers et ses GIF)
-// dans samples/ : export Android et iPhone sans médias, et export iPhone avec médias (.zip).
+// dans samples/ : export Android et iPhone sans médias, et export iPhone avec médias (.zip),
+// en français (« Les Potes ») et en anglais (« The Crew »). Prénoms et messages sont inventés.
 //   node tools/make-sample.mjs
 import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,88 +13,171 @@ let seed = 42;
 const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const pick = a => a[Math.floor(rnd() * a.length)];
 const chance = p => rnd() < p;
-
-const BASE = [
-  'on se retrouve où ce soir', 'je suis au boulot jusqu\'à 19h', 'vous avez vu le match hier', 'il fait un temps pourri',
-  'qui vient samedi', 'je ramène les bières', 'j\'ai beaucoup de taf cette semaine', 'c\'était vraiment cool hier',
-  'je pars en vacances la semaine pro', 'le resto était bon', 'je suis en retard désolé', 'on part à quelle heure',
-  'j\'ai vu un film incroyable', 'ça marche pour moi', 'je peux pas ce weekend', 'envoyez les photos', 'c\'est quoi le plan',
-  'j\'arrive dans 10 min', 'on fait un apéro jeudi', 'il reste de la place dans la voiture', 'la flemme', 'je suis crevé',
-  'quelqu\'un a un chargeur', 'on réserve où', 'je vous rejoins plus tard', 'vous êtes où', 'c\'est réglé',
-  'on peut décaler à 21h', 'j\'ai raté le train', 'qui a les clés', 'je m\'occupe des courses', 'il faut qu\'on s\'organise',
-  'j\'ai trouvé une super adresse', 'ça vous dit un ciné', 'je rentre tard ce soir', 'on se fait un foot dimanche',
-  'vous avez écouté le nouvel album', 'le concert c\'est quand déjà', 'je suis devant', 'je vous tiens au courant',
-  'j\'ai faim', 'qui prend le dessert', 'c\'est mon tour de payer', 'on vote', 'je suis chaud pour samedi',
-];
-
-const PEOPLE = [
-  { name: 'Julie Moreau', w: 30, tics: [
-    s => (chance(0.25) ? 'du coup ' : '') + s, s => s + (chance(0.12) ? ', trop bien' : ''), s => s + (chance(0.3) ? ' 😂' : ''),
-    s => (chance(0.13) ? pick(['ahahah', 'ahahahah', 'ahahahahah']) + ' ' : '') + s, s => s + (chance(0.06) ? ' bisous' : ''),
-    s => s + (chance(0.05) ? ' avec Léo' : '')] },
-  { name: 'Karim B', w: 22, tics: [
-    s => (chance(0.2) ? 'attends ' : '') + s, s => s + (chance(0.12) ? ', tranquille' : ''), s => s + (chance(0.15) ? ' de ouf' : ''),
-    s => (chance(0.18) ? 'en vrai ' : '') + s, s => s + (chance(0.2) ? ' 🔥' : '')] },
-  { name: 'Inès', w: 18, tics: [
-    s => (chance(0.15) ? 'carrément, ' : '') + s, s => s + (chance(0.35) ? '...' : ''), s => (chance(0.15) ? 'j\'avoue ' : '') + s,
-    s => s + (chance(0.1) ? ' tkt' : ''), s => s + (chance(0.15) ? ' 💀' : '')] },
-  { name: 'Thomas Lefèvre', w: 18, tics: [
-    s => (chance(0.15) ? 'Bref. ' : '') + s, s => (chance(0.1) ? 'ok ok ' : '') + s, s => s + (chance(0.2) ? pick([' mdrrr', ' mdrrrr', ' mdrr']) : ''),
-    s => s + (chance(0.15) ? ' grave' : ''), s => s + (chance(0.25) ? ' !!!' : '')] },
-  { name: 'Max', w: 12, tics: [
-    s => s + (chance(0.15) ? ', c\'est clair' : ''), s => s + (chance(0.08) ? '. Voilà voilà' : ''), s => s + (chance(0.1) ? ', on verra' : ''),
-    s => (chance(0.1) ? 'Hello ' : '') + s, s => s + (chance(0.15) ? ' 🙏' : '')] },
-];
-const SOPHIE = 'Sophie';   // membre très peu active : ne doit pas être analysée
-
+const pad = n => String(n).padStart(2, '0');
 const cap = s => s[0].toUpperCase() + s.slice(1);
-const totalW = PEOPLE.reduce((s, p) => s + p.w, 0);
-const who = () => { let r = rnd() * totalW; for (const p of PEOPLE) if ((r -= p.w) < 0) return p; return PEOPLE[0]; };
 
-// Médias : chacun ses habitudes et ses stickers ou GIF fétiches.
-const MEDIA = {
-  'Julie Moreau': { gif: 0.10, photo: 0.03, favGif: [1, 1, 1, 2] },
-  'Karim B': { sticker: 0.18, favSticker: [1, 1, 1, 2, 2] },
-  'Inès': { sticker: 0.06, vocal: 0.03, favSticker: [3, 3, 3] },
-  'Thomas Lefèvre': { vocal: 0.12, photo: 0.05 },
-  'Max': { photo: 0.06, gif: 0.03 },
+// Les rôles sont les mêmes dans les deux langues : 0 aime les GIF, 1 relance la conversation et
+// envoie des stickers, 2 écrit des pavés, 3 écrit la nuit et envoie des vocaux, 4 répond tout de suite
+// et crie en majuscules ; « quiet » écrit à peine (ne doit pas être analysé).
+const FR = {
+  group: 'Les Potes',
+  BASE: [
+    'on se retrouve où ce soir', 'je suis au boulot jusqu\'à 19h', 'vous avez vu le match hier', 'il fait un temps pourri',
+    'qui vient samedi', 'je ramène les bières', 'j\'ai beaucoup de taf cette semaine', 'c\'était vraiment cool hier',
+    'je pars en vacances la semaine pro', 'le resto était bon', 'je suis en retard désolé', 'on part à quelle heure',
+    'j\'ai vu un film incroyable', 'ça marche pour moi', 'je peux pas ce weekend', 'envoyez les photos', 'c\'est quoi le plan',
+    'j\'arrive dans 10 min', 'on fait un apéro jeudi', 'il reste de la place dans la voiture', 'la flemme', 'je suis crevé',
+    'quelqu\'un a un chargeur', 'on réserve où', 'je vous rejoins plus tard', 'vous êtes où', 'c\'est réglé',
+    'on peut décaler à 21h', 'j\'ai raté le train', 'qui a les clés', 'je m\'occupe des courses', 'il faut qu\'on s\'organise',
+    'j\'ai trouvé une super adresse', 'ça vous dit un ciné', 'je rentre tard ce soir', 'on se fait un foot dimanche',
+    'vous avez écouté le nouvel album', 'le concert c\'est quand déjà', 'je suis devant', 'je vous tiens au courant',
+    'j\'ai faim', 'qui prend le dessert', 'c\'est mon tour de payer', 'on vote', 'je suis chaud pour samedi',
+  ],
+  PEOPLE: [
+    { name: 'Julie Moreau', w: 30, tics: [
+      s => (chance(0.25) ? 'du coup ' : '') + s, s => s + (chance(0.12) ? ', trop bien' : ''), s => s + (chance(0.3) ? ' 😂' : ''),
+      s => (chance(0.13) ? pick(['ahahah', 'ahahahah', 'ahahahahah']) + ' ' : '') + s, s => s + (chance(0.06) ? ' bisous' : ''),
+      s => s + (chance(0.05) ? ' avec Léo' : '')] },
+    { name: 'Karim B', w: 22, tics: [
+      s => (chance(0.2) ? 'attends ' : '') + s, s => s + (chance(0.12) ? ', tranquille' : ''), s => s + (chance(0.15) ? ' de ouf' : ''),
+      s => (chance(0.18) ? 'en vrai ' : '') + s, s => s + (chance(0.2) ? ' 🔥' : '')] },
+    { name: 'Inès', w: 18, tics: [
+      s => (chance(0.15) ? 'carrément, ' : '') + s, s => s + (chance(0.35) ? '...' : ''), s => (chance(0.15) ? 'j\'avoue ' : '') + s,
+      s => s + (chance(0.1) ? ' tkt' : ''), s => s + (chance(0.15) ? ' 💀' : '')] },
+    { name: 'Thomas Lefèvre', w: 18, tics: [
+      s => (chance(0.15) ? 'Bref. ' : '') + s, s => (chance(0.1) ? 'ok ok ' : '') + s, s => s + (chance(0.2) ? pick([' mdrrr', ' mdrrrr', ' mdrr']) : ''),
+      s => s + (chance(0.15) ? ' grave' : ''), s => s + (chance(0.25) ? ' !!!' : '')] },
+    { name: 'Max', w: 12, tics: [
+      s => s + (chance(0.15) ? ', c\'est clair' : ''), s => s + (chance(0.08) ? '. Voilà voilà' : ''), s => s + (chance(0.1) ? ', on verra' : ''),
+      s => (chance(0.1) ? 'Hello ' : '') + s, s => s + (chance(0.15) ? ' 🙏' : '')] },
+  ],
+  quiet: 'Sophie',
+  quietLines: ['Coucou tout le monde', 'Je passe samedi', 'Merci pour hier'],
+  wallEnd: ', bref je vous raconterai tout en détail',
+  topic: ['Le déménagement c\'est samedi', 'Il me faut encore des cartons', 'Qui peut aider pour le déménagement', 'J\'ai plus de cartons', 'Les cartons sont dans le camion'],
+  nightEnd: ' mdrrr',
+  list: 'Bon je résume pour samedi :\n- Julie les courses\n- Karim la voiture\n- moi le reste',
+  // Format d'export français
+  date: d => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`,
+  time: (m, sec) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}${sec != null ? ':' + pad(sec) : ''}`,
+  sep: ' ',
+  omittedIos: { sticker: 'autocollant omis', gif: 'GIF retiré', vocal: 'audio omis', photo: 'image absente' },
+  omittedAndroid: '<Médias omis>',
+  attached: f => `<pièce jointe : ${f}>`,
+  deleted: 'Ce message a été supprimé', deletedIos: '‎Ce message a été supprimé.',
+  androidHead: d => [`${d} - Les messages et les appels sont chiffrés de bout en bout. Personne en dehors de cette discussion ne peut les lire ou les écouter.`,
+    `${d} - Julie Moreau a créé le groupe « Les Potes »`],
+  iosHead: d => [`[${d}] Les Potes: ‎Les messages et les appels sont chiffrés de bout en bout.`, `[${d}] Julie Moreau: ‎Julie Moreau a créé ce groupe`],
+  files: ['Discussion WhatsApp avec Les Potes.txt', 'WhatsApp Chat - Les Potes (iPhone).txt', 'WhatsApp Chat - Les Potes (avec médias).zip'],
 };
+
+const EN = {
+  group: 'The Crew',
+  BASE: [
+    'where are we meeting tonight', 'stuck at work until 7', 'did you watch the game last night', 'the weather is awful today',
+    'who is coming on saturday', 'i will bring drinks', 'so much work this week', 'last night was really fun',
+    'going on holiday next week', 'the restaurant was good', 'running late sorry', 'what time are we leaving',
+    'just watched an amazing movie', 'works for me', 'cant make it this weekend', 'send the pics', 'what is the plan',
+    'be there in 10', 'drinks on thursday', 'there is still room in the car', 'cant be bothered', 'i am exhausted',
+    'anyone got a charger', 'where should we book', 'i will join you later', 'where are you guys', 'all sorted',
+    'can we push it to 9', 'missed my train', 'who has the keys', 'i will do the shopping', 'we need to get organised',
+    'found a great place', 'movie night anyone', 'home late tonight', 'football on sunday',
+    'have you heard the new album', 'when is the concert again', 'i am outside', 'i will keep you posted',
+    'i am starving', 'who is getting dessert', 'my turn to pay', 'lets vote', 'up for saturday',
+  ],
+  PEOPLE: [
+    { name: 'Emma Walsh', w: 30, tics: [
+      s => (chance(0.25) ? 'so basically ' : '') + s, s => s + (chance(0.12) ? ', love that' : ''), s => s + (chance(0.3) ? ' 😂' : ''),
+      s => (chance(0.13) ? pick(['hahaha', 'hahahaha', 'hahahahaha']) + ' ' : '') + s, s => s + (chance(0.06) ? ' xoxo' : ''),
+      s => s + (chance(0.05) ? ' with Leo' : '')] },
+    { name: 'Jay P', w: 22, tics: [
+      s => (chance(0.2) ? 'hold on ' : '') + s, s => s + (chance(0.12) ? ', no worries' : ''), s => s + (chance(0.15) ? ' for real' : ''),
+      s => (chance(0.18) ? 'honestly ' : '') + s, s => s + (chance(0.2) ? ' 🔥' : '')] },
+    { name: 'Priya', w: 18, tics: [
+      s => (chance(0.15) ? 'totally, ' : '') + s, s => s + (chance(0.35) ? '...' : ''), s => (chance(0.15) ? 'ngl ' : '') + s,
+      s => s + (chance(0.1) ? ' no cap' : ''), s => s + (chance(0.15) ? ' 💀' : '')] },
+    { name: 'Tom Becker', w: 18, tics: [
+      s => (chance(0.15) ? 'Anyway. ' : '') + s, s => (chance(0.1) ? 'right right ' : '') + s, s => s + (chance(0.2) ? pick([' lmaooo', ' lmaoooo', ' lmaoo']) : ''),
+      s => s + (chance(0.15) ? ' big time' : ''), s => s + (chance(0.25) ? ' !!!' : '')] },
+    { name: 'Max', w: 12, tics: [
+      s => s + (chance(0.15) ? ', for sure' : ''), s => s + (chance(0.08) ? '. That\'s that' : ''), s => s + (chance(0.1) ? ', we\'ll see' : ''),
+      s => (chance(0.1) ? 'Hiya ' : '') + s, s => s + (chance(0.15) ? ' 🙏' : '')] },
+  ],
+  quiet: 'Sophie',
+  quietLines: ['Hi everyone', 'I\'ll swing by on Saturday', 'Thanks for last night'],
+  wallEnd: ', anyway I\'ll tell you everything later',
+  topic: ['The move is on Saturday', 'I still need more boxes', 'Who can help with the move', 'I\'m out of boxes', 'The boxes are in the van'],
+  nightEnd: ' lmaooo',
+  list: 'Ok quick recap for Saturday:\n- Emma does the shopping\n- Jay brings the car\n- I handle the rest',
+  // Format d'export américain : mois/jour/année, heure en AM/PM (espace fine insécable sur iPhone)
+  date: d => `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`,
+  time: (m, sec, ios) => {
+    const h = Math.floor(m / 60) % 24;
+    return `${h % 12 || 12}:${pad(m % 60)}${sec != null ? ':' + pad(sec) : ''}${ios ? ' ' : ' '}${h < 12 ? 'AM' : 'PM'}`;
+  },
+  sep: ', ',
+  omittedIos: { sticker: 'sticker omitted', gif: 'GIF omitted', vocal: 'audio omitted', photo: 'image omitted' },
+  omittedAndroid: '<Media omitted>',
+  attached: f => `<attached: ${f}>`,
+  deleted: 'This message was deleted', deletedIos: '‎This message was deleted.',
+  androidHead: d => [`${d} - Messages and calls are end-to-end encrypted. No one outside of this chat, not even WhatsApp, can read or listen to them.`,
+    `${d} - Emma Walsh created group "The Crew"`],
+  iosHead: d => [`[${d}] The Crew: ‎Messages and calls are end-to-end encrypted.`, `[${d}] Emma Walsh: ‎Emma Walsh created this group`],
+  files: ['WhatsApp Chat with The Crew.txt', 'WhatsApp Chat - The Crew (iPhone).txt', 'WhatsApp Chat - The Crew (with media).zip'],
+};
+
+// Médias, par rôle : habitudes, et stickers ou GIF fétiches.
+const MEDIA = [
+  { gif: 0.10, photo: 0.03, favGif: [1, 1, 1, 2] },
+  { sticker: 0.18, favSticker: [1, 1, 1, 2, 2] },
+  { sticker: 0.06, vocal: 0.03, favSticker: [3, 3, 3] },
+  { vocal: 0.12, photo: 0.05 },
+  { photo: 0.06, gif: 0.03 },
+];
 const SHARED_STICKERS = [8, 9];   // stickers que tout le monde envoie de temps en temps
 const SHARED_GIFS = [8];
 
-const lines = [];   // {day, minute, author, text} ou {day, minute, author, media: {kind, id}}
-let day = new Date(2026, 4, 1);
-for (let d = 0; d < 130; d++) {
-  day = new Date(day.getTime() + 86400000);
-  const burst = chance(0.75) ? 6 + Math.floor(rnd() * 30) : 0;
-  let minute = 9 * 60 + Math.floor(rnd() * 600);
-  for (let i = 0; i < burst; i++) {
-    // Karim relance souvent la conversation du jour ; Max répond quasi instantanément.
-    const p = i === 0 && chance(0.5) ? PEOPLE[1] : who();
-    minute = Math.min(minute + (p.name === 'Max' ? 0 : 1 + Math.floor(rnd() * 8)), 23 * 60 + 59);
-    let s = pick(BASE);
-    if (p.name === 'Inès' && chance(0.12)) s = [s, pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE)].join(', ') + ', bref je vous raconterai tout en détail';
-    for (const t of p.tics) s = t(s);
-    if (chance(0.5)) s = cap(s);
-    if (p.name === 'Max' && chance(0.1)) s = s.toUpperCase();   // l'explosif du groupe
-    lines.push({ day, minute, author: p.name, text: s });
-    const m = MEDIA[p.name];
-    for (const kind of ['sticker', 'gif', 'vocal', 'photo']) {
-      if (!chance(m[kind] || 0.015)) continue;
-      const fav = kind === 'sticker' ? m.favSticker : kind === 'gif' ? m.favGif : null;
-      const shared = kind === 'sticker' ? SHARED_STICKERS : SHARED_GIFS;
-      const id = kind === 'photo' || kind === 'vocal' ? null : fav && chance(0.8) ? pick(fav) : pick(shared);
-      lines.push({ day, minute, author: p.name, media: { kind, id } });
+function conversation(L) {
+  seed = 42;
+  const { PEOPLE, BASE } = L;
+  const totalW = PEOPLE.reduce((s, p) => s + p.w, 0);
+  const who = () => { let r = rnd() * totalW; for (const p of PEOPLE) if ((r -= p.w) < 0) return p; return PEOPLE[0]; };
+  const lines = [];   // {day, minute, author, text} ou {day, minute, author, media: {kind, id}}
+  let day = new Date(2026, 4, 1);
+  for (let d = 0; d < 130; d++) {
+    day = new Date(day.getTime() + 86400000);
+    const burst = chance(0.75) ? 6 + Math.floor(rnd() * 30) : 0;
+    let minute = 9 * 60 + Math.floor(rnd() * 600);
+    for (let i = 0; i < burst; i++) {
+      // Le rôle 1 relance souvent la conversation du jour ; le rôle 4 répond quasi instantanément.
+      const p = i === 0 && chance(0.5) ? PEOPLE[1] : who();
+      const role = PEOPLE.indexOf(p);
+      minute = Math.min(minute + (role === 4 ? 0 : 1 + Math.floor(rnd() * 8)), 23 * 60 + 59);
+      let s = pick(BASE);
+      if (role === 2 && chance(0.12)) s = [s, pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE), pick(BASE)].join(', ') + L.wallEnd;
+      for (const t of p.tics) s = t(s);
+      if (chance(0.5)) s = cap(s);
+      if (role === 4 && chance(0.1)) s = s.toUpperCase();   // l'explosif du groupe
+      lines.push({ day, minute, author: p.name, text: s });
+      const m = MEDIA[role];
+      for (const kind of ['sticker', 'gif', 'vocal', 'photo']) {
+        if (!chance(m[kind] || 0.015)) continue;
+        const fav = kind === 'sticker' ? m.favSticker : kind === 'gif' ? m.favGif : null;
+        const shared = kind === 'sticker' ? SHARED_STICKERS : SHARED_GIFS;
+        const id = kind === 'photo' || kind === 'vocal' ? null : fav && chance(0.8) ? pick(fav) : pick(shared);
+        lines.push({ day, minute, author: p.name, media: { kind, id } });
+      }
+      if (chance(0.01)) lines.push({ day, minute, author: p.name, text: 'DELETED' });
     }
-    if (chance(0.01)) lines.push({ day, minute, author: p.name, text: 'DELETED' });
+    if (d === 40) for (let i = 0; i < 8; i++) {   // une conversation sur un sujet : ne doit pas ressortir comme tic
+      minute += 2;
+      lines.push({ day, minute, author: PEOPLE[3].name, text: pick(L.topic) });
+    }
+    if (d % 3 === 0) lines.push({ day, minute: 60 + Math.floor(rnd() * 180), author: PEOPLE[3].name, text: cap(pick(BASE)) + L.nightEnd });   // couche-tard
+    if (d % 25 === 3) lines.push({ day, minute: minute + 3, author: L.quiet, text: pick(L.quietLines) });
+    if (d === 12) lines.push({ day, minute: minute + 5, author: PEOPLE[4].name, text: L.list });
   }
-  if (d === 40) for (let i = 0; i < 8; i++) {   // une conversation sur un sujet : ne doit pas ressortir comme tic
-    minute += 2;
-    lines.push({ day, minute, author: 'Thomas Lefèvre', text: pick(['Le déménagement c\'est samedi', 'Il me faut encore des cartons', 'Qui peut aider pour le déménagement', 'J\'ai plus de cartons', 'Les cartons sont dans le camion']) });
-  }
-  if (d % 3 === 0) lines.push({ day, minute: 60 + Math.floor(rnd() * 180), author: 'Thomas Lefèvre', text: cap(pick(BASE)) + ' mdrrr' });   // couche-tard
-  if (d % 25 === 3) lines.push({ day, minute: minute + 3, author: SOPHIE, text: pick(['Coucou tout le monde', 'Je passe samedi', 'Merci pour hier']) });
-  if (d === 12) lines.push({ day, minute: minute + 5, author: 'Max', text: 'Bon je résume pour samedi :\n- Julie les courses\n- Karim la voiture\n- moi le reste' });
+  return lines;
 }
 
 // Petites images PNG (sans dépendance) : un visage par sticker, un dégradé par photo.
@@ -123,46 +207,46 @@ function face(id, anim = false) {
     return anim ? [255 - r, 255 - g, 255 - b, 255] : [r, g, b, 255];
   });
 }
-const photo = seed => png(240, 180, (x, y) => [(x + seed * 37) % 256, (y * 2 + seed * 91) % 256, (seed * 53) % 256, 255]);
+const photo = n => png(240, 180, (x, y) => [(x + n * 37) % 256, (y * 2 + n * 91) % 256, (n * 53) % 256, 255]);
 
-const pad = n => String(n).padStart(2, '0');
-const date = d => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-const time = (m, sec) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}${sec ? ':' + pad(Math.floor(rnd() * 60)) : ''}`;
 const stamp = (d, m) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(Math.floor(m / 60) % 24)}-${pad(m % 60)}-00`;
-
-const OMITTED_IOS = { sticker: 'autocollant omis', gif: 'GIF retiré', vocal: 'audio omis', photo: 'image absente' };
 const TYPE = { sticker: ['STICKER', 'webp'], gif: ['GIF', 'gif'], vocal: ['AUDIO', 'opus'], photo: ['PHOTO', 'jpg'] };
-const android = ['01/05/2026 10:00 - Les messages et les appels sont chiffrés de bout en bout. Personne en dehors de cette discussion ne peut les lire ou les écouter.',
-  '01/05/2026 10:00 - Julie Moreau a créé le groupe « Les Potes »'];
-const head = ['[01/05/2026 10:00:00] Les Potes: ‎Les messages et les appels sont chiffrés de bout en bout.',
-  '[01/05/2026 10:00:00] Julie Moreau: ‎Julie Moreau a créé ce groupe'];
-const ios = [...head], iosMedia = [...head];
-const dir = mkdtempSync(join(tmpdir(), 'ctt-'));
-let seq = 0;
-for (const l of lines) {
-  const t = time(l.minute, true);
-  if (l.media) {
-    const { kind, id } = l.media;
-    const file = `${String(++seq).padStart(8, '0')}-${TYPE[kind][0]}-${stamp(l.day, l.minute)}.${TYPE[kind][1]}`;
-    writeFileSync(join(dir, file), kind === 'sticker' ? face(id) : kind === 'gif' ? face(id + 3, true) : kind === 'photo' ? photo(seq) : Buffer.from(`vocal ${seq}`));
-    android.push(`${date(l.day)} ${time(l.minute)} - ${l.author}: <Médias omis>`);
-    ios.push(`[${date(l.day)} ${t}] ${l.author}: ‎${OMITTED_IOS[kind]}`);
-    iosMedia.push(`[${date(l.day)} ${t}] ${l.author}: ‎<pièce jointe : ${file}>`);
-    continue;
+const root = new URL('../samples/', import.meta.url);
+
+function write(L) {
+  const lines = conversation(L);
+  const first = new Date(2026, 4, 1);
+  const android = L.androidHead(`${L.date(first)}${L.sep}${L.time(600)}`);
+  const head = L.iosHead(`${L.date(first)}${L.sep}${L.time(600, 0, true)}`);
+  const ios = [...head], iosMedia = [...head];
+  const dir = mkdtempSync(join(tmpdir(), 'ctt-'));
+  let seq = 0;
+  for (const l of lines) {
+    const a = `${L.date(l.day)}${L.sep}${L.time(l.minute)} - ${l.author}: `;
+    const i = `[${L.date(l.day)}${L.sep}${L.time(l.minute, Math.floor(rnd() * 60), true)}] ${l.author}: `;
+    if (l.media) {
+      const { kind, id } = l.media;
+      const file = `${String(++seq).padStart(8, '0')}-${TYPE[kind][0]}-${stamp(l.day, l.minute)}.${TYPE[kind][1]}`;
+      writeFileSync(join(dir, file), kind === 'sticker' ? face(id) : kind === 'gif' ? face(id + 3, true) : kind === 'photo' ? photo(seq) : Buffer.from(`vocal ${seq}`));
+      android.push(a + L.omittedAndroid);
+      ios.push(i + '‎' + L.omittedIos[kind]);
+      iosMedia.push(i + '‎' + L.attached(file));
+      continue;
+    }
+    android.push(a + (l.text === 'DELETED' ? L.deleted : l.text));
+    ios.push(i + (l.text === 'DELETED' ? L.deletedIos : l.text));
+    iosMedia.push(i + (l.text === 'DELETED' ? L.deletedIos : l.text));
   }
-  const a = { DELETED: 'Ce message a été supprimé' }[l.text] ?? l.text;
-  const i = { DELETED: '‎Ce message a été supprimé.' }[l.text] ?? l.text;
-  android.push(`${date(l.day)} ${time(l.minute)} - ${l.author}: ${a}`);
-  ios.push(`[${date(l.day)} ${t}] ${l.author}: ${i}`);
-  iosMedia.push(`[${date(l.day)} ${t}] ${l.author}: ${i}`);
+  const [androidName, iosName, zipName] = L.files;
+  writeFileSync(new URL(androidName, root), android.join('\n') + '\n');
+  writeFileSync(new URL(iosName, root), ios.join('\n') + '\n');
+  writeFileSync(join(dir, '_chat.txt'), iosMedia.join('\n') + '\n');
+  const zipPath = fileURLToPath(new URL(zipName, root));
+  rmSync(zipPath, { force: true });
+  execFileSync('zip', ['-q', '-r', zipPath, '.'], { cwd: dir });
+  rmSync(dir, { recursive: true });
+  console.log(`${L.group} : ${lines.length} messages, dont ${seq} médias, écrits dans samples/`);
 }
 
-const root = new URL('../samples/', import.meta.url);
-writeFileSync(new URL('Discussion WhatsApp avec Les Potes.txt', root), android.join('\n') + '\n');
-writeFileSync(new URL('WhatsApp Chat - Les Potes (iPhone).txt', root), ios.join('\n') + '\n');
-writeFileSync(join(dir, '_chat.txt'), iosMedia.join('\n') + '\n');
-const zipPath = fileURLToPath(new URL('WhatsApp Chat - Les Potes (avec médias).zip', root));
-rmSync(zipPath, { force: true });
-execFileSync('zip', ['-q', '-r', zipPath, '.'], { cwd: dir });
-rmSync(dir, { recursive: true });
-console.log(`${lines.length} messages, dont ${seq} médias, écrits dans samples/`);
+write(FR);
+write(EN);

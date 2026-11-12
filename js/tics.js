@@ -20,6 +20,7 @@
 // de chacun (les fichiers identiques sont regroupés grâce à leur taille et leur CRC).
 
 import { memberStats, bestPhotos, cultMessages, montageItems } from './records.js';
+import { DICT } from './i18n.js';
 
 const MAX_MESSAGES = 60000;   // au-delà, on ne garde que les plus récents
 const MIN_MESSAGES = 20;      // en dessous, un membre n'est pas analysé
@@ -39,18 +40,37 @@ const LEVELS = [
 const COHESION = 0.3;
 const MIN_WORD_USES = 5;   // un mot seul doit revenir plus qu'une expression pour être un vrai tic
 const MAX_MEDIA_BYTES = 3 * 1024 * 1024; // un sticker ou un GIF plus lourd ne sera pas envoyé aux joueurs
-const HABITS = { sticker: 'stickers', gif: 'GIF', photo: 'photos', video: 'vidéos', vocal: 'vocaux', media: 'médias' };
+const HABITS = DICT.fr.habits;   // les sortes de médias comptées (le texte dépend de la langue)
 
 const STOP = new Set(`a à ai aie as au aux avait avais avez avoir avons ça ce ceci cela celle celui ces cet cette chez ci
   comme d dans de des du elle elles en es est et étais était été être eu eux fait faire il ils j je l la le les leur leurs
   lui m ma me même mes moi mon n ne ni nos notre nous on ont ou où par pas pour qu que quel quelle qui s sa sans se ses si
   son sont sur t ta te tes toi ton tu un une vos votre vous y avec c'est j'ai d'un d'une qu'il qu'on n'est l'a l'ai m'a t'as
-  s'est c'était il y the to of and is it in i you that a an`.split(/\s+/));
+  s'est c'était il y
+  the to of and or but is are was were be been am i me my you your he him his she her it its we us our they them their this that
+  these those in on at for with from by as so if not no do does did have has had will would can could should just i'm it's don't
+  im dont that's thats you're youre i'll ill i've ive there here what when where who how an`.split(/\s+/));
 
-// Une expression ne se termine pas sur un mot « en attente » (« du coup je », « en vrai le »).
-const DANGLING = new Set(`a à au aux avec ce ces cette d de des du dans en et j je l la le les leur ma mais me mes mon n ne
+// Une expression ne se termine pas sur un mot « en attente » (« du coup je », « en vrai le »). La liste
+// dépend de la langue de la discussion : en anglais, « hold on » ou « come on » sont de vraies expressions.
+const DANGLING_FR = new Set(`a à au aux avec ce ces cette d de des du dans en et j je l la le les leur ma mais me mes mon n ne
   nos notre on ou par pour qu que qui s sa se ses si son sur t ta te tes ton tu un une vos votre y il ils elle elles nous
   vous c'est j'ai est`.split(/\s+/));
+const DANGLING_EN = new Set(`a an the to of and or but my your his her our their is are was i we they so as than if i'm it's
+  don't`.split(/\s+/));
+let DANGLING = DANGLING_FR;
+
+// Langue de la discussion (pas forcément celle de l'hôte) : les petits mots les plus courants.
+const FR_WORDS = new Set('je tu il on nous vous le la les un une des de du et est pas que qui c\'est ça'.split(' '));
+const EN_WORDS = new Set('i you he she we they the a an and is are not that it to of what this'.split(' '));
+export function chatLanguage(messages) {
+  let fr = 0, en = 0;
+  for (const m of messages.slice(-3000)) for (const w of m.text.toLowerCase().split(/[^\p{L}']+/u)) {
+    if (FR_WORDS.has(w)) fr++;
+    else if (EN_WORDS.has(w)) en++;
+  }
+  return en > fr ? 'en' : 'fr';
+}
 
 // Mots de tous les jours : même si une seule personne les emploie, ils ne font pas une question.
 const BANAL = new Set(`ok okay oki okok oui ouais ouai non nan nope si quoi hein bon bah ben beh bé eh ah oh ha hé euh mh hum
@@ -59,7 +79,12 @@ const BANAL = new Set(`ok okay oki okok oui ouais ouai non nan nope si quoi hein
   aussi encore déjà toujours jamais alors donc mais car parce puis après avant ici là voilà bref enfin juste tout tous
   toute toutes rien personne quelqu'un chose truc machin faire fais fait dire dis dit voir vois vu aller vais va vas
   venir viens vient peux peut veux veut sais sait faut pense crois moi toi lui nous vous eux c'est c'était ça cela
-  comme quand comment pourquoi où combien qui que quel quelle ouf grave genre carrément`.split(/\s+/));
+  comme quand comment pourquoi où combien qui que quel quelle ouf grave genre carrément
+  okay k kk yes yeah yea yep yup ya nah sure fine thanks thank thx ty please pls plz sorry hi hey sup morning night tonight
+  today tomorrow yesterday lmao lmfao rofl hehe omg wtf idk btw good great nice awesome bad really very so too also still
+  already always never then now well like maybe gonna wanna gotta know think see go going get got make made say said want
+  need lot lots thing things stuff something anything nothing everyone someone guys guy man bro dude people time day week
+  um uh hmm wow damn yeah one two three what why when where how much`.split(/\s+/));
 
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const TOKEN_RE = /(\p{Extended_Pictographic})|([\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*)|([!?]{2,}|\.{2,}|…)/gu;
@@ -209,10 +234,10 @@ function shuffle(a) {
 // files (export avec médias) : nom de fichier → { key, size }, où key identifie le contenu.
 // On commence par les seuils les plus exigeants, et on les assouplit tant que trop peu de
 // membres ont des tics (au moins deux avec 3 tics, et la moitié des membres avec au moins un).
-export function analyze(chat, files = new Map()) {
+export function analyze(chat, files = new Map(), lang = 'fr') {
   let result;
   for (let level = 0; level < LEVELS.length; level++) {
-    result = analyzeAt(chat, files, level);
+    result = analyzeAt(chat, files, level, lang);
     const n = result.authors.filter(a => a.messages >= MIN_MESSAGES).length;
     const withTics = result.authors.filter(a => a.tics.length).length;
     if (result.authors.filter(a => a.tics.length >= 3).length >= Math.min(2, n) && withTics >= Math.ceil(n / 2)) break;
@@ -220,7 +245,9 @@ export function analyze(chat, files = new Map()) {
   return result;
 }
 
-function analyzeAt(chat, files, level) {
+function analyzeAt(chat, files, level, lang) {
+  const L = DICT[lang] || DICT.fr;
+  DANGLING = chatLanguage(chat.messages) === 'en' ? DANGLING_EN : DANGLING_FR;
   const messages = chat.messages.slice(-MAX_MESSAGES);
   const medias = chat.medias || [];
   const names = [...new Set([...messages, ...medias].map(m => m.author))];
@@ -334,7 +361,7 @@ function analyzeAt(chat, files, level) {
     for (let a = 0; a < A; a++) {
       if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
       const own = owned(st.c, perAll, a, habitRule);
-      if (own) candidates[a].push({ ...candidate('#' + kind, 'habitude', st.c, a, own), text: HABITS[kind], of: kind });
+      if (own) candidates[a].push({ ...candidate('#' + kind, 'habitude', st.c, a, own), text: L.habits[kind], of: kind });
     }
   }
 
@@ -359,7 +386,7 @@ function analyzeAt(chat, files, level) {
     for (let a = 0; a < A; a++) {
       if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
       const own = owned(st.c, perAll, a, rule);
-      if (own) candidates[a].push({ ...candidate(key, st.kind, st.c, a, own, 1.3), text: st.kind === 'gif' ? 'ce GIF' : 'ce sticker', file: st.file });
+      if (own) candidates[a].push({ ...candidate(key, st.kind, st.c, a, own, 1.3), text: st.kind === 'gif' ? L.thisGif : L.thisSticker, file: st.file });
     }
   }
 
@@ -451,7 +478,7 @@ function analyzeAt(chat, files, level) {
     for (const t of kept) {
       picked[a].push({
         key: '=' + t.text, kind: 'message', text: t.text, uses: 0, others: 0, topOther: null, lift: 0,
-        detail: `Typique de ${names[a]} : ${t.found.slice(0, 3).map(k => `« ${k} »`).join(', ')}.`,
+        detail: L.typical(names[a], t.found.slice(0, 3)),
       });
     }
   });
@@ -469,5 +496,5 @@ function analyzeAt(chat, files, level) {
     .sort((x, y) => y.messages - x.messages);
 
   const slideshow = files.size ? bestPhotos(chat, files) : [];
-  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors, slideshow, cults: cultMessages(chat), montage: files.size ? montageItems(chat, files) : [] };
+  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors, slideshow, lang, cults: cultMessages(chat, 8, lang), montage: files.size ? montageItems(chat, files) : [] };
 }

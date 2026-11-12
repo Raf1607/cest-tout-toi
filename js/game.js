@@ -2,6 +2,7 @@
 // téléphone reçoit seulement ce qu'il doit afficher (jamais la réponse avant la révélation).
 
 import { pickRecords } from './records.js';
+import { DICT } from './i18n.js';
 
 export const ROUNDS = [6, 10, 15, 20];
 export const SECONDS = [15, 25, 40];
@@ -11,12 +12,12 @@ const ALL_VOTED_PAUSE = 600;     // tout le monde a voté : petite pause avant l
 // Roue de la fortune : tirée au sort après chaque manche (une fois sur trois en moyenne). Bonus pour
 // le premier à avoir voté, malus pour le premier du classement. Bonus et malus alternent sur la roue.
 export const WHEEL = [
-  { id: 'double', kind: 'bonus', label: 'Points ×2' },
-  { id: 'moins2', kind: 'malus', label: '−2 points' },
-  { id: 'lettre', kind: 'bonus', label: 'Une lettre' },
-  { id: 'flou', kind: 'malus', label: 'Question floue' },
-  { id: 'bouclier', kind: 'bonus', label: 'Bouclier' },
-  { id: 'melange', kind: 'malus', label: 'Noms mélangés' },
+  { id: 'double', kind: 'bonus' },
+  { id: 'moins2', kind: 'malus' },
+  { id: 'lettre', kind: 'bonus' },
+  { id: 'flou', kind: 'malus' },
+  { id: 'bouclier', kind: 'bonus' },
+  { id: 'melange', kind: 'malus' },
 ];
 export const WHEEL_MS = 6000;
 const WHEEL_CHANCE = 1 / 3;
@@ -73,7 +74,7 @@ function varied(tics) {
 // en piochant d'abord dans leurs meilleurs tics, et en évitant ceux déjà joués lors des parties précédentes.
 // Avec l'option photos, chacun a aussi une ou deux questions « qui a envoyé cette photo ? ».
 // extra : nom → records gagnés, glissés tôt dans la file de leur gagnant.
-function buildDeck(owners, total, used, withPhotos, extra) {
+function buildDeck(owners, total, used, withPhotos, extra, photoText) {
   const queues = owners.map(a => {
     const fresh = a.tics.filter(t => !used.has(ticId(a.name, t)));
     let list = varied(fresh.length ? fresh : a.tics.slice());
@@ -84,7 +85,7 @@ function buildDeck(owners, total, used, withPhotos, extra) {
     if (fav > 2) list.splice(2, 0, list.splice(fav, 1)[0]);
     if (withPhotos && a.photos?.length) {
       const photos = shuffle(a.photos.filter(f => !used.has(a.name + '|' + f)).slice());
-      const card = file => ({ kind: 'photo', text: 'cette photo', file, uses: a.photoCount || a.photos.length, others: 0, topOther: null, example: null });
+      const card = file => ({ kind: 'photo', text: photoText, file, uses: a.photoCount || a.photos.length, others: 0, topOther: null, example: null });
       if (photos[0]) list.splice(1 + Math.floor(Math.random() * 3), 0, card(photos[0]));
       if (photos[1]) list.splice(6 + Math.floor(Math.random() * 3), 0, card(photos[1]));
     }
@@ -114,6 +115,7 @@ export function mediaOf(tic) {
 export class Game {
   constructor(analysis, code, hostId, onChange) {
     this.analysis = analysis;
+    this.lang = DICT[analysis.lang] ? analysis.lang : 'fr';   // la langue de l'hôte, pour toute la partie
     this.code = code;
     this.hostId = hostId;
     this.players = new Map();       // id → { id, author, score, connected, order }
@@ -147,7 +149,7 @@ export class Game {
     if (this.allowed.has(id)) { this.join(id); return 'ok'; }
     if (this.refused.has(id)) return 'refused';
     if (this.phase !== 'lobby') return 'closed';
-    if (!this.waiting.has(id)) this.waiting.set(id, { id, name: String(name || '').trim().slice(0, 24) || 'Quelqu\'un', at: Date.now() });
+    if (!this.waiting.has(id)) this.waiting.set(id, { id, name: String(name || '').trim().slice(0, 24), at: Date.now() });
     this.changed();
     return 'wait';
   }
@@ -227,9 +229,9 @@ export class Game {
 
   canStart() {
     const present = [...this.players.values()].filter(p => p.connected);
-    if (present.some(p => !p.author)) return { ok: false, reason: 'Chaque joueur doit choisir qui il est dans la discussion.' };
+    if (present.some(p => !p.author)) return { ok: false, reason: 'needClaim' };
     const owners = this.candidates().filter(n => this.member(n).tics.length);
-    if (owners.length < 2) return { ok: false, reason: 'Il faut au moins deux joueurs (ou inclure les membres absents).' };
+    if (owners.length < 2) return { ok: false, reason: 'needTwo' };
     return { ok: true };
   }
 
@@ -238,7 +240,7 @@ export class Game {
     const owners = this.options.map(n => this.member(n)).filter(a => a.tics.length);
     // Records (« qui répond le plus vite ? »…) : environ une manche sur trois, les vrais records avant
     // les emojis préférés, et sans redire un emoji déjà dans les tics de son propriétaire.
-    this.records = pickRecords(this.options.map(name => ({ name, stats: this.member(name).stats })), this.analysis.authors)
+    this.records = pickRecords(this.options.map(name => ({ name, stats: this.member(name).stats })), this.analysis.authors, this.lang)
       .filter(c => c.tic.kind !== 'favori' || !this.member(c.owner).tics.some(t => t.text === c.tic.text));
     const fresh = this.records.filter(c => !this.used.has(ticId(c.owner, c.tic)));
     const pool = fresh.length ? fresh : this.records.slice();
@@ -250,7 +252,7 @@ export class Game {
     const extra = new Map();
     for (const c of chosen) extra.set(c.owner, [...(extra.get(c.owner) || []), c.tic]);
     const deckOwners = [...owners, ...[...extra.keys()].filter(n => !owners.some(a => a.name === n)).map(n => ({ ...this.member(n), tics: [] }))];
-    this.deck = buildDeck(deckOwners, this.settings.rounds, this.used, this.settings.photos, extra);
+    this.deck = buildDeck(deckOwners, this.settings.rounds, this.used, this.settings.photos, extra, DICT[this.lang].thisPhoto);
     for (const p of this.players.values()) p.score = 0;
     this.index = 0;
     this.order = [];
@@ -379,7 +381,7 @@ export class Game {
       id: p.id, author: p.author, score: p.score, connected: p.connected, host: p.id === this.hostId,
       voted: this.phase === 'question' && !!this.round.votes[p.id],
     }));
-    const v = { phase: this.phase, code: this.code, title: this.analysis.title, me: id, host: id === this.hostId, players, settings: this.settings };
+    const v = { phase: this.phase, lang: this.lang, code: this.code, title: this.analysis.title, me: id, host: id === this.hostId, players, settings: this.settings };
 
     if (this.phase === 'lobby') {
       v.members = this.analysis.authors.map(a => ({ name: a.name, messages: a.messages, tics: a.tics.length }));
@@ -411,7 +413,7 @@ export class Game {
         n: this.round.n, total: this.deck.length,
         rows: after.map(pid => {
           const p = this.players.get(pid);
-          return { id: pid, name: p.author || 'Nouveau joueur', score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
+          return { id: pid, name: p.author || '', score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
         }),
       };
     }
@@ -423,15 +425,16 @@ export class Game {
     }
     if (this.phase === 'wheel') {
       const p = this.players.get(this.wheel.target);
-      v.wheel = { index: this.wheel.index, shielded: this.wheel.shielded, target: p?.author || 'Nouveau joueur', mine: this.wheel.target === id };
+      v.wheel = { index: this.wheel.index, shielded: this.wheel.shielded, target: p?.author || '', mine: this.wheel.target === id };
     }
     if (this.phase === 'end') {
       v.slides = this.slides();
+      const L = DICT[this.lang];
       v.portraits = this.options.map(name => ({
         name,
         tics: [
           ...this.records.filter(c => c.owner === name && c.tic.kind === 'record').map(c => c.tic.text),
-          ...this.member(name).tics.filter(t => !t.file && t.kind !== 'message').slice(0, 4).map(t => (t.kind === 'habitude' ? `plein de ${t.text}` : t.kind === 'debut' ? `${t.text}…` : t.kind === 'fin' ? `…${t.text}` : t.text)),
+          ...this.member(name).tics.filter(t => !t.file && t.kind !== 'message').slice(0, 4).map(t => (t.kind === 'habitude' ? L.portraitHabit(t.text) : t.kind === 'debut' ? L.start_(t.text) : t.kind === 'fin' ? L.end_(t.text) : t.text)),
         ],
       }));
     }

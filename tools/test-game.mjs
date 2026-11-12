@@ -225,4 +225,26 @@ assert.equal(media.phase, 'end');
   clearTimeout(g.timer);
 }
 
+// Partie en anglais : export américain (AM/PM, « image omitted »), textes générés en anglais.
+{
+  const enName = 'WhatsApp Chat - The Crew (with media).zip';
+  const enExp = readZipExport(fileURLToPath(new URL('../samples/' + enName, import.meta.url)));
+  const chat = parseChat(enExp.text, enName);
+  assert.equal(chat.title, 'The Crew (with media)');
+  assert.ok(chat.medias.some(m => m.kind === 'sticker') && chat.messages.length > 1500, 'export anglais lu');
+  const en = new Game(analyze(chat, enExp.files, 'en'), 'ENGL', 'h', () => {});
+  en.wheelChance = 0;
+  ['h', 'b', 'c'].forEach(id => en.join(id));
+  assert.equal(en.view('h').canStart.reason, 'needClaim', 'raison sous forme de code, traduite par l\'écran');
+  ['Emma Walsh', 'Jay P', 'Priya'].forEach((name, i) => en.handle('hbc'[i], { t: 'claim', author: name }));
+  en.handle('h', { t: 'settings', settings: { rounds: 20 } });
+  en.handle('h', { t: 'start' });
+  assert.equal(en.view('b').lang, 'en', 'les invités reçoivent la langue de la partie');
+  const texts = en.deck.map(c => `${c.tic.text} ${c.tic.detail || ''}`).join(' ');
+  assert.ok(!/[àéèç]|qui |fois|messages, contre|Typique/.test(texts), 'aucun texte français dans une partie anglaise');
+  assert.ok(en.deck.some(c => c.tic.kind === 'record' && /^[a-z]/.test(c.tic.text)), 'records en anglais');
+  assert.ok(en.analysis.authors.find(a => a.name === 'Jay P').tics.some(t => t.text === 'hold on'), '« hold on » est une expression');
+  clearTimeout(en.timer);
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

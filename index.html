@@ -11,6 +11,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Who is bro ?">
 <meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_US">
 <meta property="og:url" content="https://whoisbro.lol/">
 <meta property="og:title" content="Who is bro ? · Le quiz de ton groupe WhatsApp">
 <meta property="og:description" content="Qui a dit ça ? Qui parle le plus ? Qui a posté cette photo ? Lance un quiz entre potes sur ton groupe WhatsApp, chacun sur son téléphone.">
@@ -72,7 +73,8 @@
   .privacy:hover { color: var(--ink); }
   .foot { display: flex; justify-content: center; gap: 22px; flex-wrap: wrap; padding: 10px 0 4px; font-size: 15px; }
   .foot a { color: var(--muted); text-decoration: none; font-weight: 600; }
-  .foot a:hover { color: var(--ink); }
+  .foot a:hover, .foot .link:hover { color: var(--ink); }
+  .foot .link { padding: 0; font-size: 15px; font-weight: 600; text-decoration: none; color: var(--muted); }
 
   .brand { text-align: center; padding: 26px 0 8px; }
   .brand h1 { font-size: 46px; line-height: 1; font-weight: 800; }
@@ -335,15 +337,16 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611121122",
-  "./js/tics.js": "./js/tics.js?v=202611121122",
-  "./js/game.js": "./js/game.js?v=202611121122",
-  "./js/net.js": "./js/net.js?v=202611121122",
-  "./js/media.js": "./js/media.js?v=202611121122",
-  "./js/records.js": "./js/records.js?v=202611121122",
-  "./js/phonk.js": "./js/phonk.js?v=202611121122"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611121136",
+  "./js/tics.js": "./js/tics.js?v=202611121136",
+  "./js/game.js": "./js/game.js?v=202611121136",
+  "./js/net.js": "./js/net.js?v=202611121136",
+  "./js/media.js": "./js/media.js?v=202611121136",
+  "./js/records.js": "./js/records.js?v=202611121136",
+  "./js/i18n.js": "./js/i18n.js?v=202611121136",
+  "./js/phonk.js": "./js/phonk.js?v=202611121136"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611121122"></script>
+<script type="module" src="js/app.js?v=202611121136"></script>
 </body>
 </html>

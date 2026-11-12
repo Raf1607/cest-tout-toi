@@ -1,13 +1,16 @@
 // Les records de chacun, tirés de l'heure et de la longueur des messages : qui répond le plus vite,
 // qui relance le groupe après un long silence, qui écrit en pleine nuit, qui est le fantôme…
 // et l'emoji préféré de chacun. Une question n'est posée que si quelqu'un est nettement en tête.
+// Les textes (français ou anglais) sont dans i18n.js.
+
+import { DICT } from './i18n.js';
 
 const CONVERSATION = 180;   // minutes : au-delà, un message n'est plus une réponse au précédent
 const SILENCE = 8 * 60;     // minutes : un message après ce silence relance le groupe
 const PAVE = 200;           // caractères
 const RAFALE = 4;           // messages d'affilée
 const EMOJI = /\p{Extended_Pictographic}/gu;
-const LAUGH = /\b(?:mdr+|ptdr+|lol+|xd+|a?(?:ha){2,}h?|(?:ah){2,}a?|(?:hi){2,}|(?:hé){2,})\b/i;
+const LAUGH = /\b(?:mdr+|ptdr+|lol+|lmf?ao+|rofl|xd+|a?(?:ha){2,}h?|(?:ah){2,}a?|(?:hi){2,}|(?:h[eé]){2,})\b/i;
 
 // Message écrit en majuscules : au moins 6 lettres, et presque aucune minuscule.
 function shouting(text) {
@@ -84,46 +87,31 @@ export function memberStats(chat) {
   return out;
 }
 
-const duration = m => (m < 1 ? "moins d'une minute" : m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')}`);
-const pct = x => `${Math.round(x * 100)} %`;
-
 // Chaque record : la valeur à comparer, le sens (low : le plus petit gagne), un minimum pour le
-// gagnant (min sur la valeur, need sur ses chiffres), et le texte de la révélation (w : gagnant, r : deuxième).
+// gagnant (min sur la valeur, need sur ses chiffres). Texte et révélation : DICT[lang].records[id].
 const RECORDS = [
-  { id: 'rapide', text: 'répond le plus vite', low: true, value: s => s.reply,
-    detail: (w, r) => `Répond en ${duration(w.s.reply)} en général, contre ${duration(r.s.reply)} pour ${r.name}.` },
-  { id: 'relance', text: 'relance le groupe quand plus personne ne parle', value: s => s.relaunches, min: 3,
-    detail: (w, r) => `A relancé le groupe ${w.s.relaunches} fois après plus de 8 h de silence (${r.name} : ${r.s.relaunches}).` },
-  { id: 'fantome', text: 'est le fantôme du groupe', low: true, ratio: 0.6, wholeGroup: true, value: s => s.messages,
-    detail: (w, r) => `Seulement ${w.s.messages} messages. Le plus discret après : ${r.name} (${r.s.messages}).` },
-  { id: 'nuit', text: 'écrit le plus en pleine nuit', value: s => s.night, min: 0.03, need: s => s.nightCount >= 5,
-    detail: (w, r) => `${pct(w.s.night)} de ses messages entre minuit et 6 h, contre ${pct(r.s.night)} pour ${r.name}.` },
-  { id: 'pave', text: 'envoie les plus gros pavés', value: s => s.pave, min: 0.03, need: s => s.paveCount >= 5,
-    detail: (w, r) => `${w.s.paveCount} messages de plus de ${PAVE} caractères (${pct(w.s.pave)}), contre ${pct(r.s.pave)} pour ${r.name}.` },
-  { id: 'rafale', text: 'envoie ses messages en rafale', value: s => s.bursts, min: 3,
-    detail: (w, r) => `${w.s.bursts} fois au moins ${RAFALE} messages d'affilée (${r.name} : ${r.s.bursts}).` },
-  { id: 'bavard', text: "ne s'arrête jamais de parler", wholeGroup: true, value: s => s.messages,
-    detail: (w, r) => `${w.s.messages} messages, contre ${r.s.messages} pour ${r.name}.` },
-  { id: 'explosif', text: "est l'explosif du groupe (LES MAJUSCULES)", value: s => s.shouts, min: 0.01, need: s => s.shoutCount >= 3,
-    detail: (w, r) => `${w.s.shoutCount} messages TOUT EN MAJUSCULES, soit ${pct(w.s.shouts)} (${r.name} : ${pct(r.s.shouts)}).` },
-  { id: 'curieux', text: 'pose toujours des questions', value: s => s.questions, min: 0.05, need: s => s.questionCount >= 5,
-    detail: (w, r) => `${pct(w.s.questions)} de ses messages sont des questions, contre ${pct(r.s.questions)} pour ${r.name}.` },
-  { id: 'exclamation', text: "met des points d'exclamation partout", value: s => s.excited, min: 0.05, need: s => s.excitedCount >= 5,
-    detail: (w, r) => `Dans ${pct(w.s.excited)} de ses messages, contre ${pct(r.s.excited)} pour ${r.name}.` },
-  { id: 'telegraphe', text: 'répond en deux mots maximum', value: s => s.short, min: 0.1, need: s => s.shortCount >= 5,
-    detail: (w, r) => `${pct(w.s.short)} de ses messages font un ou deux mots, contre ${pct(r.s.short)} pour ${r.name}.` },
-  { id: 'rieur', text: 'rit de tout', value: s => s.laughs, min: 0.03, need: s => s.laughCount >= 5,
-    detail: (w, r) => `${pct(w.s.laughs)} de ses messages sont des rires, contre ${pct(r.s.laughs)} pour ${r.name}.` },
-  { id: 'dernier', text: 'a toujours le dernier mot', value: s => s.lastWords, min: 3,
-    detail: (w, r) => `${w.s.lastWords} fois le dernier message avant 8 h de silence (${r.name} : ${r.s.lastWords}).` },
-  { id: 'matinal', text: 'est debout avant tout le monde', value: s => s.early, min: 0.03, need: s => s.earlyCount >= 5,
-    detail: (w, r) => `${pct(w.s.early)} de ses messages entre 5 h et 8 h, contre ${pct(r.s.early)} pour ${r.name}.` },
+  { id: 'rapide', low: true, value: s => s.reply },
+  { id: 'relance', value: s => s.relaunches, min: 3 },
+  { id: 'fantome', low: true, ratio: 0.6, wholeGroup: true, value: s => s.messages },
+  { id: 'nuit', value: s => s.night, min: 0.03, need: s => s.nightCount >= 5 },
+  { id: 'pave', value: s => s.pave, min: 0.03, need: s => s.paveCount >= 5 },
+  { id: 'rafale', value: s => s.bursts, min: 3 },
+  { id: 'bavard', wholeGroup: true, value: s => s.messages },
+  { id: 'explosif', value: s => s.shouts, min: 0.01, need: s => s.shoutCount >= 3 },
+  { id: 'curieux', value: s => s.questions, min: 0.05, need: s => s.questionCount >= 5 },
+  { id: 'exclamation', value: s => s.excited, min: 0.05, need: s => s.excitedCount >= 5 },
+  { id: 'telegraphe', value: s => s.short, min: 0.1, need: s => s.shortCount >= 5 },
+  { id: 'rieur', value: s => s.laughs, min: 0.03, need: s => s.laughCount >= 5 },
+  { id: 'dernier', value: s => s.lastWords, min: 3 },
+  { id: 'matinal', value: s => s.early, min: 0.03, need: s => s.earlyCount >= 5 },
 ];
 
 // members : [{ name, stats }] (les noms proposés au vote) ; everyone : tous les membres de la discussion,
 // pour les records qui portent sur tout le groupe (le fantôme doit être le plus discret de tous, pas
 // seulement des joueurs). → cartes { owner, tic: { kind: 'record' | 'favori', … } }
-export function pickRecords(members, everyone = members) {
+export function pickRecords(members, everyone = members, lang = 'fr') {
+  const L = DICT[lang] || DICT.fr;
+  const N = { pave: PAVE, burst: RAFALE };
   const cards = [];
   for (const rec of RECORDS) {
     const ranked = (rec.wholeGroup ? everyone : members).filter(m => m.stats && rec.value(m.stats) != null)
@@ -133,13 +121,14 @@ export function pickRecords(members, everyone = members) {
     const [w, r] = ranked;
     const clear = rec.low ? w.v <= (rec.ratio || 0.75) * r.v : w.v >= 1.3 * r.v && w.v >= (rec.min || 0);
     if (!clear || (rec.need && !rec.need(w.s)) || !members.some(m => m.name === w.name)) continue;
-    cards.push({ owner: w.name, tic: { kind: 'record', id: rec.id, text: rec.text, detail: rec.detail(w, r), uses: 0, others: 0 } });
+    const [text, detail] = L.records[rec.id];
+    cards.push({ owner: w.name, tic: { kind: 'record', id: rec.id, text, detail: detail(w, r, L.duration, L.pct, N), uses: 0, others: 0 } });
   }
   // Emoji préféré : seulement s'il n'est celui de personne d'autre.
   const favs = members.filter(m => m.stats?.emoji);
   for (const m of favs) {
     if (favs.some(o => o !== m && o.stats.emoji.e === m.stats.emoji.e)) continue;
-    cards.push({ owner: m.name, tic: { kind: 'favori', id: 'emoji', text: m.stats.emoji.e, detail: `Son emoji préféré : envoyé dans ${m.stats.emoji.n} messages.`, uses: 0, others: 0 } });
+    cards.push({ owner: m.name, tic: { kind: 'favori', id: 'emoji', text: m.stats.emoji.e, detail: L.favDetail(m.stats.emoji.n), uses: 0, others: 0 } });
   }
   return cards;
 }
@@ -173,7 +162,8 @@ export function bestPhotos(chat, files, max = 10) {
 
 // Messages cultes : ceux qui ont fait le plus réagir le groupe (emojis et réponses des autres juste
 // après), à condition d'être montrables tels quels.
-export function cultMessages(chat, max = 8) {
+export function cultMessages(chat, max = 8, lang = 'fr') {
+  const L = DICT[lang] || DICT.fr;
   const timeline = chat.timeline || [];
   const out = [];
   timeline.forEach((e, i) => {
@@ -192,7 +182,7 @@ export function cultMessages(chat, max = 8) {
     out.push({ author: e.author, text: e.text, reactions, emojis: [...counts].sort((a, b) => b[1] - a[1]).slice(0, 4), score: 2 * reactions + replies });
   });
   return out.sort((a, b) => b.score - a.score).slice(0, max)
-    .map(({ author, text, reactions, emojis }) => ({ author, text, detail: `${reactions} emojis en réaction juste après : ${emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')}.` }));
+    .map(({ author, text, reactions, emojis }) => ({ author, text, detail: L.cultDetail(reactions, emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')) }));
 }
 
 // Montage de fin : les photos les plus commentées, plus les stickers et GIF les plus envoyés du groupe.

@@ -1,6 +1,6 @@
 # Who is bro ?
 
-Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son téléphone.
+Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son téléphone. En français et en anglais.
 
 **Jouer : https://whoisbro.lol**
 
@@ -16,6 +16,8 @@ Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son t
 **Pendant la partie, l'hôte garde la page ouverte et l'écran allumé** (sur iPhone, mettre le verrouillage automatique sur *Jamais* par sécurité) : si sa page se ferme, la partie s'arrête. Les autres peuvent recharger la page, ils reviennent avec leur nom et leur score.
 
 ## Comment ça marche
+
+- **Deux langues.** L'accueil suit la langue du téléphone (ou le lien *English* / *Français*, ou `?lang=en`). Une partie se joue dans la langue de l'hôte : les invités basculent dessus en entrant. Tous les textes sont dans `js/i18n.js` ; l'analyse reconnaît d'elle-même une discussion en anglais (exports américains en AM/PM, « image omitted », expressions comme « hold on »).
 
 - **Aucun serveur de jeu.** Le téléphone de l'hôte tient la partie ; les autres s'y connectent en pair-à-pair (WebRTC, via [PeerJS](https://peerjs.com) et son serveur public de mise en relation, qui ne voit pas le contenu des échanges).
 - **Parties verrouillées.** Un téléphone qui arrive ne reçoit rien (ni noms, ni messages, ni photos) tant que l'hôte ne l'a pas accepté. Une fois la partie lancée, plus personne de nouveau n'entre ; seuls les joueurs acceptés peuvent revenir après une coupure. Le code de 6 lettres (191 millions de possibilités) ne peut pas être deviné au hasard.
@@ -62,7 +64,9 @@ npm install && node tools/video/render.mjs                     # vidéo de prés
 | `CNAME` | domaine du site (whoisbro.lol), lu par GitHub Pages |
 | `qui-sommes-nous.html`, `about.html`, `raph.jpg` | page « Qui sommes-nous ? » en français et en anglais (photo sans métadonnées GPS) |
 | `video/who-is-bro.mp4` | vidéo de présentation, liée en bas de l'accueil (copie de `promo/`, après `node tools/video/render.mjs`) |
+| `privacy.html` | page « protection des données » en anglais |
 | `confidentialite.html` | page « protection des données », liée depuis l'accueil |
+| `js/i18n.js` | textes en français et en anglais |
 | `js/whatsapp.js` | lecture des exports iPhone et Android |
 | `js/tics.js` | détection des tics |
 | `js/game.js` | règles et déroulé de la partie (côté hôte) |
@@ -73,4 +77,4 @@ npm install && node tools/video/render.mjs                     # vidéo de prés
 | `js/app.js` | écrans |
 | `serve.py` | serveur local pour tester |
 | `tools/` | partie simulée, analyse d'un export, génération des exemples |
-| `samples/` | discussions inventées pour la démo et les tests |
+| `samples/` | discussions inventées pour la démo et les tests (« Les Potes » en français, « The Crew » en anglais) |

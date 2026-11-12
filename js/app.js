@@ -7,6 +7,7 @@ import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_MS, MONTAGE_MS } from './game.js';
 import { BPM, unlockAudio, playPhonk } from './phonk.js';
 import { openRoom, Client, CODE_LENGTH } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
+import { pickLang, saveLang, tr } from './i18n.js';
 
 const $app = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -22,6 +23,17 @@ const myId = store.get('ctt-id') || (() => {
   return id;
 })();
 
+// Langue : celle de l'accueil (choix du joueur ou du téléphone), puis celle de l'hôte pendant une partie.
+let lang = pickLang();
+let T = tr(lang);
+function setLang(l) {
+  lang = l;
+  T = tr(l);
+  document.documentElement.lang = l;
+  document.title = T('title');
+}
+setLang(lang);
+
 let ui = { screen: 'home', error: '', busy: '', status: 'ok' };
 let view = null;
 let game = null;
@@ -29,7 +41,7 @@ let client = null;
 let endsAt = 0;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fmt = n => n.toLocaleString('fr-FR');
+const fmt = n => n.toLocaleString(T('locale'));
 const send = msg => (game ? game.handle(myId, msg) : client?.send(msg));
 // Ouverte sur l'ordinateur qui fait tourner serve.py, la page connaît l'adresse du jeu sur le
 // Wi-Fi : c'est elle qu'on donne aux téléphones (localhost ne mènerait nulle part).
@@ -64,7 +76,7 @@ function qrSvg(text) {
   q.make();
   return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
 }
-const nameOf = p => p.author || 'Nouveau joueur';
+const nameOf = p => p.author || p.name || T('newPlayer');
 
 // Stickers, GIF et photos à montrer : id (nom du fichier dans l'export) → adresse locale de l'image.
 const mediaCache = new Map();
@@ -82,24 +94,22 @@ function mediaArrived(id) {
 // ——— Hôte ———
 
 async function host(getFile) {
-  setUi({ screen: 'busy', busy: 'Lecture de la discussion…', error: '' });
+  setUi({ screen: 'busy', busy: T('reading'), error: '' });
   try {
     const file = await getFile();
     const { text, files, entries } = await readExport(file);
     const chat = parseChat(text, file.name);
-    if (chat.messages.length < 50) throw new Error('Ce fichier ne ressemble pas à un export de discussion WhatsApp, ou la discussion est trop courte.');
-    setUi({ busy: `Analyse de ${fmt(chat.messages.length + chat.medias.length)} messages${files.size ? ` et ${fmt(files.size)} médias` : ''}…` });
+    if (chat.messages.length < 50) throw new Error(T('notAChat'));
+    setUi({ busy: T('analysing', fmt(chat.messages.length + chat.medias.length), files.size ? fmt(files.size) : 0) });
     await new Promise(r => setTimeout(r, 50));
-    const analysis = analyze(chat, files);
-    analysis.title ||= 'la discussion';
+    const analysis = analyze(chat, files, lang);
+    analysis.title ||= T('chatTitle');
     const withTics = analysis.authors.filter(a => a.tics.length);
     if (withTics.length < 2) {
       // Les chiffres aident à comprendre : export mal lu, ou groupe où personne ne se distingue.
-      throw new Error(`Pas assez de matière pour jouer : ${fmt(chat.messages.length)} messages lus, `
-        + `${analysis.authors.length} membres avec au moins 20 messages, ${withTics.length} avec des questions possibles `
-        + `(${withTics.map(a => a.name).join(', ') || 'aucun'}).`);
+      throw new Error(T('notEnough', fmt(chat.messages.length), analysis.authors.length, withTics.length, withTics.map(a => a.name).join(', ')));
     }
-    setUi({ busy: 'Création de la partie…' });
+    setUi({ busy: T('creating') });
     const conns = new Map();
     // Le média de la manche est préparé une fois, puis envoyé à chaque téléphone (et à ceux qui
     // arrivent ou se reconnectent en cours de manche). Celui de la manche suivante part en avance.
@@ -194,32 +204,32 @@ async function host(getFile) {
 
 function join(code, name = store.get('ctt-name') || '') {
   code = code.toUpperCase().replace(/[^A-Z]/g, '');
-  if (code.length !== CODE_LENGTH) return setUi({ screen: 'home', error: `Le code de la partie fait ${CODE_LENGTH} lettres.` });
+  if (code.length !== CODE_LENGTH) return setUi({ screen: 'home', error: T('codeLength', CODE_LENGTH) });
   name = name.trim().slice(0, 24);
-  if (!name) return setUi({ screen: 'home', error: 'Indique ton prénom : l\'hôte doit savoir qui demande à entrer.' });
+  if (!name) return setUi({ screen: 'home', error: T('nameNeeded') });
   store.set('ctt-name', name);
   if (params.get('p') !== code) history.replaceState(null, '', `?p=${code}`);
-  setUi({ screen: 'busy', busy: `Connexion à la partie ${code}…`, error: '' });
+  setUi({ screen: 'busy', busy: T('connecting', code), error: '' });
   client?.close();
   const inbox = new MediaInbox((id, url) => { mediaCache.set(id, url); mediaArrived(id); });
   client = new Client(code, myId, name, {
     onMessage(msg) {
       if (msg?.t === 'state') { ui.screen = 'game'; show(msg.s); }
-      else if (msg?.t === 'wait') setUi({ screen: 'busy', busy: `Demande envoyée. L'hôte de la partie ${code} doit te faire entrer…` });
+      else if (msg?.t === 'wait') setUi({ screen: 'busy', busy: T('waiting', code) });
       else if (msg?.t === 'refused') {
         client?.close();
         client = null;
         view = null;
         history.replaceState(null, '', location.pathname);
-        setUi({ screen: 'home', status: 'ok', error: msg.why === 'closed' ? 'La partie a déjà commencé : demande à l\'hôte d\'en relancer une.' : "L'hôte n'a pas accepté ta demande." });
+        setUi({ screen: 'home', status: 'ok', error: msg.why === 'closed' ? T('closed') : T('refused') });
       }
       else if (msg?.t === 'media') inbox.add(msg);
     },
     onStatus(status) {
       const errors = {
-        notfound: `Partie ${code} introuvable. Vérifie le code.`,
-        offline: 'Impossible de joindre le serveur de mise en relation. Vérifie la connexion internet.',
-        gone: "La connexion avec l'hôte est perdue.",
+        notfound: T('notFound', code),
+        offline: T('offline'),
+        gone: T('gone'),
       };
       if (errors[status]) {
         client = null;
@@ -238,6 +248,7 @@ function setUi(patch) { Object.assign(ui, patch); render(); }
 function show(v) {
   const before = view;
   view = v;
+  if (v.lang && v.lang !== lang) setLang(v.lang);   // la partie se joue dans la langue de l'hôte
   const fresh = v.phase === 'question' && (before?.phase !== 'question' || before.round.n !== v.round.n);
   if (fresh && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(40);
   endsAt = v.phase === 'question' ? Date.now() + v.round.remaining : 0;   // l'hôte peut raccourcir le temps
@@ -262,7 +273,7 @@ function render() {
   if (ui.screen === 'home') html = homeScreen();
   else if (ui.screen === 'busy') html = `<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
-  const banner = ui.status === 'lost' ? '<div class="banner">Connexion perdue, reconnexion…</div>' : '';
+  const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
   $app.innerHTML = banner + html;
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
   $app.dataset.key = key;
@@ -280,53 +291,54 @@ function homeScreen() {
   return `
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
-      <p><b>Qui a dit ça&nbsp;? Qui parle le plus&nbsp;? Qui a posté cette photo&nbsp;?</b><br>Lance un quiz entre potes sur ton groupe WhatsApp.</p>
-      ${gamesPlayed ? `<p class="counter"><b>${fmt(gamesPlayed)}</b> partie${gamesPlayed > 1 ? 's' : ''} jouée${gamesPlayed > 1 ? 's' : ''}</p>` : ''}
+      <p>${T('tagline')}</p>
+      ${gamesPlayed ? `<p class="counter">${T('gamesPlayed', gamesPlayed)}</p>` : ''}
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
     ${lanUrl ? `
     <section class="card invite">
       <div class="qr">${qrSvg(lanUrl)}</div>
       <div>
-        <h2>Sur les téléphones</h2>
-        <p>Connectés au même Wi-Fi que cet ordinateur, scannez ce code ou ouvrez&nbsp;:</p>
+        <h2>${T('lanTitle')}</h2>
+        <p>${T('lanText')}</p>
         <p class="url">${esc(lanUrl)}</p>
       </div>
     </section>` : ''}
     <section class="card">
-      <h2>Rejoindre une partie</h2>
+      <h2>${T('joinTitle')}</h2>
       <form class="join" data-form="join">
-        <input name="code" value="${esc(code)}" maxlength="${CODE_LENGTH}" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Code de la partie">
-        <input name="name" value="${esc(store.get('ctt-name') || '')}" maxlength="24" placeholder="Ton prénom" autocomplete="given-name" aria-label="Ton prénom">
-        <button class="primary" type="submit">Rejoindre</button>
+        <input name="code" value="${esc(code)}" maxlength="${CODE_LENGTH}" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="${T('codeLabel')}">
+        <input name="name" value="${esc(store.get('ctt-name') || '')}" maxlength="24" placeholder="${T('yourName')}" autocomplete="given-name" aria-label="${T('yourName')}">
+        <button class="primary" type="submit">${T('join')}</button>
       </form>
     </section>
     <section class="card">
-      <h2>Créer une partie</h2>
-      <label class="button primary file">Importer la discussion<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
+      <h2>${T('createTitle')}</h2>
+      <label class="button primary file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <details>
-        <summary>Comment exporter la discussion&nbsp;?</summary>
-        <p><b>iPhone</b> — ouvre la discussion, touche le nom du groupe en haut, puis <i>Exporter la discussion</i> › <i>Joindre les médias</i> (ou <i>Sans médias</i>) › <i>Enregistrer dans Fichiers</i>. Reviens ici et choisis le fichier.</p>
-        <p><b>Android</b> — ouvre la discussion, menu ⋮ › <i>Plus</i> › <i>Exporter la discussion</i> › <i>Inclure les médias</i> (ou <i>Sans médias</i>), et enregistre le fichier sur le téléphone.</p>
-        <p><b>Avec les médias, c'est bien plus fun</b>&nbsp;: stickers et GIF fétiches de chacun, montage photo en musique à la fin (et, si l'hôte l'active, des photos à deviner). Seule limite&nbsp;: WhatsApp n'y met que les 10&nbsp;000 derniers messages environ.</p>
-        <p><b>Sans médias</b>, WhatsApp va plus loin dans le passé (environ 40&nbsp;000 messages), mais pas de stickers, GIF ni montage&nbsp;: juste des questions du genre « qui envoie le plus de stickers ».</p>
+        <summary>${T('howExport')}</summary>
+        <p>${T('exportIphone')}</p>
+        <p>${T('exportAndroid')}</p>
+        <p>${T('exportMedia')}</p>
+        <p>${T('exportNoMedia')}</p>
       </details>
-      <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que ce qu'il faut deviner (expressions, quelques vrais messages, stickers…).</p>
-      <a class="privacy" href="confidentialite.html">Comment tes données sont protégées</a>
-      <button class="link" data-act="demo">Essayer avec une discussion d'exemple</button>
+      <p>${T('importText')}</p>
+      <a class="privacy" href="${T('privacyPage')}">${T('privacyLink')}</a>
+      <button class="link" data-act="demo">${T('demo')}</button>
     </section>
     <footer class="foot">
-      <a href="video/who-is-bro.mp4">▶ Voir la vidéo</a>
-      <a href="qui-sommes-nous.html">Qui sommes-nous&nbsp;?</a>
+      ${lang === 'fr' ? `<a href="video/who-is-bro.mp4">${T('video')}</a>` : ''}
+      <a href="${T('aboutPage')}">${T('about')}</a>
+      <button class="link" data-act="lang" lang="${lang === 'fr' ? 'en' : 'fr'}">${T('otherLang')}</button>
     </footer>`;
 }
 
 function playerList(v) {
   return `<ul class="players">${v.players.map(p => `
     <li class="${p.connected ? '' : 'off'}">
-      <span class="name">${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
-      ${p.host ? '<small class="tag">hôte</small>' : ''}
-      ${p.connected ? '' : '<small class="tag">déconnecté</small>'}
+      <span class="name">${esc(nameOf(p))}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span>
+      ${p.host ? `<small class="tag">${T('hostTag')}</small>` : ''}
+      ${p.connected ? '' : `<small class="tag">${T('offTag')}</small>`}
     </li>`).join('')}</ul>`;
 }
 
@@ -341,101 +353,93 @@ function lobbyScreen() {
   const taken = new Map(v.players.filter(p => p.author).map(p => [p.author, p]));
   const canShare = navigator.share || navigator.clipboard;   // absents en http sur le réseau local
   return `
-    <div class="top"><span class="title">« ${esc(v.title)} »</span></div>
+    <div class="top"><span class="title">${T('quote', esc(v.title))}</span></div>
     <section class="card invite">
       ${v.host ? `<div class="qr">${qrSvg(inviteUrl(v.code))}</div>` : ''}
       <div>
-        <p class="label">Code de la partie</p>
+        <p class="label">${T('codeLabel')}</p>
         <p class="code">${esc(v.code)}</p>
-        ${v.host ? (canShare ? '<button class="small" data-act="share">Partager le lien</button>' : `<p class="url">${esc(inviteUrl(v.code))}</p>`) : ''}
+        ${v.host ? (canShare ? `<button class="small" data-act="share">${T('shareLink')}</button>` : `<p class="url">${esc(inviteUrl(v.code))}</p>`) : ''}
       </div>
     </section>
 
     ${v.waiting?.length ? `
     <section class="card knock">
-      <h2>Demandes pour entrer</h2>
-      <p class="hint">N'accepte que tes amis : une fois dans la partie, on voit les noms et les messages du groupe.</p>
-      ${v.waiting.map(w => `<div class="ask"><span>${esc(w.name)}</span>
-        <button class="small" data-act="admit" data-id="${esc(w.id)}" data-ok="0">Refuser</button>
-        <button class="small primary" data-act="admit" data-id="${esc(w.id)}" data-ok="1">Accepter</button></div>`).join('')}
+      <h2>${T('knockTitle')}</h2>
+      <p class="hint">${T('knockHint')}</p>
+      ${v.waiting.map(w => `<div class="ask"><span>${esc(w.name || T('someone'))}</span>
+        <button class="small" data-act="admit" data-id="${esc(w.id)}" data-ok="0">${T('refuse')}</button>
+        <button class="small primary" data-act="admit" data-id="${esc(w.id)}" data-ok="1">${T('accept')}</button></div>`).join('')}
     </section>` : ''}
 
-    <h2>Qui es-tu dans la discussion&nbsp;?</h2>
+    <h2>${T('whoAreYou')}</h2>
     <div class="members">${v.members.map(m => {
       const owner = taken.get(m.name);
       const mine = owner?.id === v.me;
       const busy = owner && !mine && owner.connected;
       return `<button data-act="claim" data-author="${esc(m.name)}" class="${mine ? 'on' : ''}" ${busy ? 'disabled' : ''}>
         <span>${esc(m.name)}</span>
-        <small>${busy ? 'déjà pris' : `${fmt(m.messages)} messages${m.tics ? '' : ' · rien à deviner'}`}</small>
+        <small>${busy ? T('taken') : `${T('messagesCount', fmt(m.messages))}${m.tics ? '' : T('nothingToGuess')}`}</small>
       </button>`;
     }).join('')}</div>
 
-    <h2>Joueurs <small>${v.players.filter(p => p.connected).length}</small></h2>
+    <h2>${T('players')} <small>${v.players.filter(p => p.connected).length}</small></h2>
     ${playerList(v)}
 
     ${v.host ? `
-      <h2>Réglages</h2>
-      <div class="setting"><span>Manches</span>${segmented('rounds', ROUNDS, v.settings.rounds, 'Nombre de manches')}</div>
-      <div class="setting"><span>Temps pour voter</span>${segmented('seconds', SECONDS, v.settings.seconds, 'Temps pour voter')}</div>
+      <h2>${T('settings')}</h2>
+      <div class="setting"><span>${T('rounds')}</span>${segmented('rounds', ROUNDS, v.settings.rounds, T('roundsLabel'))}</div>
+      <div class="setting"><span>${T('voteTime')}</span>${segmented('seconds', SECONDS, v.settings.seconds, T('voteTime'))}</div>
       <label class="setting toggle">
-        <span>Inclure les membres absents${v.absentCount ? ` <small>(${v.absentCount})</small>` : ''}</span>
+        <span>${T('absent')}${v.absentCount ? ` <small>(${v.absentCount})</small>` : ''}</span>
         <input type="checkbox" data-input="absent" ${v.settings.absent ? 'checked' : ''}>
       </label>
       <label class="setting toggle">
-        <span>Roue de la fortune <small>(bonus et malus au hasard entre les manches)</small></span>
+        <span>${T('wheelSetting')}</span>
         <input type="checkbox" data-input="wheel" ${v.settings.wheel ? 'checked' : ''}>
       </label>
       ${v.photoCount ? `
       <label class="setting toggle">
-        <span>Questions sur les photos <small>(n'importe quelle photo du groupe peut s'afficher)</small></span>
+        <span>${T('photosSetting')}</span>
         <input type="checkbox" data-input="photos" ${v.settings.photos ? 'checked' : ''}>
       </label>` : ''}
       ${v.slideCount ? `
       <label class="setting toggle">
-        <span>Montage en musique et diaporama à la fin <small>(les photos, stickers et GIF du groupe)</small></span>
+        <span>${T('slideshowSetting')}</span>
         <input type="checkbox" data-input="slideshow" ${v.settings.slideshow ? 'checked' : ''}>
       </label>` : ''}
       <div class="actions">
-        <button class="primary big" data-act="start" ${v.canStart.ok ? '' : 'disabled'}>Lancer la partie</button>
-        ${v.canStart.ok ? '' : `<p class="hint">${esc(v.canStart.reason)}</p>`}
+        <button class="primary big" data-act="start" ${v.canStart.ok ? '' : 'disabled'}>${T('start')}</button>
+        ${v.canStart.ok ? '' : `<p class="hint">${esc(T(v.canStart.reason))}</p>`}
       </div>`
-    : `<p class="wait">${me?.author ? "L'hôte va lancer la partie…" : 'Choisis ton nom dans la liste.'}</p>`}`;
+    : `<p class="wait">${me?.author ? T('hostWillStart') : T('pickName')}</p>`}`;
 }
-
-const ASK = {
-  expr: 'Qui dit tout le temps…', mot: 'Qui dit tout le temps…', emoji: 'Qui envoie tout le temps…', ponct: 'Qui écrit tout le temps…',
-  sticker: 'Qui envoie tout le temps ce sticker ?', gif: 'Qui envoie tout le temps ce GIF ?', photo: 'Qui a envoyé cette photo ?',
-  habitude: 'Qui envoie le plus…', record: 'Qui…', favori: 'Qui a cet emoji préféré ?',
-  debut: 'Qui commence souvent ses messages par…', fin: 'Qui finit souvent ses messages par…',
-  message: 'Qui a écrit ça ?', culte: 'Qui a écrit ce message culte ?',
-};
 
 function bubble(r) {
   if (r.media) {
     const url = mediaCache.get(r.media.id);
-    const inner = !url ? '<span class="wait">Chargement…</span>'
+    const inner = !url ? `<span class="wait">${T('loading')}</span>`
       : r.media.type === 'video' ? `<video src="${url}" autoplay loop muted playsinline></video>`
       : `<img src="${url}" alt="">`;
     return `<div class="bubble media ${r.kind}">${inner}</div>`;
   }
-  if (r.kind === 'habitude') return `<div class="bubble habitude">de ${esc(r.text)}&nbsp;?</div>`;
-  if (r.kind === 'record') return `<div class="bubble record">${esc(r.text)}&nbsp;?</div>`;
+  if (r.kind === 'habitude') return `<div class="bubble habitude">${T('habitBubble', esc(r.text))}</div>`;
+  if (r.kind === 'record') return `<div class="bubble record">${T('recordBubble', esc(r.text))}</div>`;
   if (r.kind === 'favori') return `<div class="bubble emoji">${esc(r.text)}</div>`;
   if (r.kind === 'message' || r.kind === 'culte') return `<div class="bubble message">${esc(r.text)}</div>`;
-  if (r.kind === 'debut') return `<div class="bubble expr">«&nbsp;${esc(r.text)}…&nbsp;»</div>`;
-  if (r.kind === 'fin') return `<div class="bubble expr">«&nbsp;…${esc(r.text)}&nbsp;»</div>`;
-  return `<div class="bubble ${r.kind}">${r.kind === 'expr' || r.kind === 'mot' ? `«&nbsp;${esc(r.text)}&nbsp;»` : esc(r.text)}</div>`;
+  if (r.kind === 'debut') return `<div class="bubble expr">${T('quote', `${esc(r.text)}…`)}</div>`;
+  if (r.kind === 'fin') return `<div class="bubble expr">${T('quote', `…${esc(r.text)}`)}</div>`;
+  return `<div class="bubble ${r.kind}">${r.kind === 'expr' || r.kind === 'mot' ? T('quote', esc(r.text)) : esc(r.text)}</div>`;
 }
 
 function statLine(r) {
-  const others = r.others === 0 ? "Personne d'autre, jamais."
-    : `Les autres : ${fmt(r.others)} fois en tout${r.topOther && r.others > r.topOther.uses ? `, dont ${fmt(r.topOther.uses)} pour ${esc(r.topOther.name)}` : r.topOther ? ` (${esc(r.topOther.name)})` : ''}.`;
+  const others = r.others === 0 ? T('nobodyElse')
+    : T('othersTotal', fmt(r.others), r.topOther && r.others > r.topOther.uses ? T('othersTop', fmt(r.topOther.uses), esc(r.topOther.name)) : r.topOther ? T('othersOne', esc(r.topOther.name)) : '');
   if (r.detail) return esc(r.detail);
-  if (r.kind === 'photo') return `Une de ses ${fmt(r.uses)} photos.`;
-  if (r.kind === 'sticker' || r.kind === 'gif') return `Envoyé <b>${fmt(r.uses)}</b> fois. ${others}`;
-  if (r.kind === 'habitude') return `<b>${fmt(r.uses)}</b> ${esc(r.text)} sur ses ${fmt(r.ownerMessages)} messages. ${others}`;
-  return `Dans <b>${fmt(r.uses)}</b> de ses ${fmt(r.ownerMessages)} messages. ${others}`;
+  if (r.kind === 'photo') return T('onePhoto', fmt(r.uses));
+  if (r.kind === 'sticker' || r.kind === 'gif') return `${T('sentTimes', fmt(r.uses))} ${others}`;
+  if (r.kind === 'habitude') return `${T('habitStat', fmt(r.uses), esc(r.text), fmt(r.ownerMessages))} ${others}`;
+  return `${T('inMessages', fmt(r.uses), fmt(r.ownerMessages))} ${others}`;
 }
 
 function questionScreen() {
@@ -443,15 +447,15 @@ function questionScreen() {
   return `
     <div class="round-top">
       <div class="round-info">
-        <div class="hud"><span>Manche ${r.n}/${r.total}</span><span class="timer" data-timer></span></div>
+        <div class="hud"><span>${T('round', r.n, r.total)}</span><span class="timer" data-timer></span></div>
         <div class="bar"><i data-bar></i></div>
       </div>
-      <ol class="mini" aria-label="Classement"></ol>
+      <ol class="mini" aria-label="${T('ranking')}"></ol>
     </div>
-    ${r.double ? '<p class="fx good">Bonus : tes points comptent double sur cette manche</p>' : ''}
-    ${r.hint ? `<p class="fx good">Bonus : son prénom contient la lettre ${esc(r.hint)}</p>` : ''}
-    ${r.labels ? '<p class="fx bad">Malus : les noms sont mélangés</p>' : ''}
-    <p class="ask">${ASK[r.kind]}</p>
+    ${r.double ? `<p class="fx good">${T('bonusDouble')}</p>` : ''}
+    ${r.hint ? `<p class="fx good">${T('bonusLetter', esc(r.hint))}</p>` : ''}
+    ${r.labels ? `<p class="fx bad">${T('malusShuffle')}</p>` : ''}
+    <p class="ask">${T('ask')[r.kind]}</p>
     ${bubble(r)}
     <div class="options">${r.options.map(name =>
       `<button data-act="vote" data-author="${esc(name)}">${esc(r.labels?.[name] || name)}</button>`).join('')}</div>
@@ -466,13 +470,13 @@ function patchQuestion() {
   const shown = v.players.filter(p => p.author || p.voted).sort((a, b) => b.score - a.score);
   $app.querySelector('.mini').innerHTML = shown.map(p => `
     <li class="${p.voted ? 'voted' : ''} ${p.connected ? '' : 'off'}">
-      <i aria-label="${p.voted ? 'a voté' : 'pas encore voté'}"></i><span>${p.id === v.me ? 'Toi' : esc(nameOf(p).split(' ')[0])}</span><b>${p.score}</b>
+      <i aria-label="${p.voted ? T('voted') : T('notVoted')}"></i><span>${p.id === v.me ? T('youShort') : esc(nameOf(p).split(' ')[0])}</span><b>${p.score}</b>
     </li>`).join('');
   const present = v.players.filter(p => p.connected);
   const voted = present.filter(p => p.voted).length;
   $app.querySelector('.voters').textContent = voted
-    ? `${voted}/${present.length} ont voté · on peut changer d'avis jusqu'à la fin`
-    : 'Dès le premier vote, il ne reste que 7 secondes !';
+    ? T('votersCount', voted, present.length)
+    : T('firstVote');
 }
 
 function highlight(text, part) {
@@ -487,11 +491,11 @@ function rankingScreen() {
   const { n, total, rows } = view.ranking;
   const step = Math.min(68, Math.floor((window.innerHeight - 150) / Math.max(rows.length, 1)));
   return `
-    <header class="brand small"><h1>Classement</h1><p>Après la manche ${n}/${total}</p></header>
+    <header class="brand small"><h1>${T('ranking')}</h1><p>${T('afterRound', n, total)}</p></header>
     <ol class="board" style="height:${rows.length * step}px">${rows.map((p, now) => `
       <li data-now="${now}" data-was="${p.was}" class="${p.id === view.me ? 'me' : ''} ${p.delta > 0 ? 'gain' : p.delta < 0 ? 'loss' : ''} ${p.was > now ? 'rise' : ''}" style="--i:${p.was};height:${step - 8}px;transform:translateY(${p.was * step}px)">
         <em>${p.was + 1}</em>
-        <span class="name">${esc(p.id === view.me ? `${p.name} (toi)` : p.name)}</span>
+        <span class="name">${esc(p.id === view.me ? `${nameOf(p)} ${T('you')}` : nameOf(p))}</span>
         ${p.delta ? `<i class="${p.delta > 0 ? 'up' : 'down'}">${p.delta > 0 ? '+' : '−'}${Math.abs(p.delta)}</i>` : ''}
         <u class="${p.was > now ? 'up' : p.was < now ? 'down' : ''}">${p.was > now ? '▲' : p.was < now ? '▼' : ''}</u>
         <b data-from="${p.score - p.delta}" data-to="${p.score}">${p.score - p.delta}</b>
@@ -503,12 +507,12 @@ function wheelScreen() {
   const angle = 360 / WHEEL.length;
   const slices = WHEEL.map((s, i) => `var(--${s.kind}${i % 4 < 2 ? '' : '-2'}) ${i * angle}deg ${(i + 1) * angle}deg`).join(',');
   return `
-    <header class="brand small"><h1>Roue de la fortune</h1></header>
+    <header class="brand small"><h1>${T('wheelTitle')}</h1></header>
     <div class="wheel-box">
       <div class="lights">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20}deg;--n:${i % 2}"></i>`).join('')}</div>
       <div class="pointer"></div>
       <div class="wheel" style="background:conic-gradient(${slices})">${WHEEL.map((s, i) =>
-        `<span style="transform:rotate(${(i + 0.5) * angle}deg)"><b>${esc(s.label)}</b></span>`).join('')}</div>
+        `<span style="transform:rotate(${(i + 0.5) * angle}deg)"><b>${esc(T('wheel')[s.id])}</b></span>`).join('')}</div>
       <div class="spot"></div>
       <div class="hub"></div>
     </div>
@@ -516,14 +520,9 @@ function wheelScreen() {
 }
 
 function wheelMessage() {
-  const w = view.wheel, seg = WHEEL[w.index], who = esc(w.target), me = w.mine;
-  if (w.shielded) return `Le bouclier de ${who} bloque le malus «&nbsp;${esc(seg.label)}&nbsp;»&nbsp;!`;
-  if (seg.id === 'double') return `${who}, le plus rapide à voter, a ses points doublés à la prochaine manche&nbsp;!`;
-  if (seg.id === 'lettre') return `${who}, le plus rapide à voter, aura un indice à la prochaine manche&nbsp;!`;
-  if (seg.id === 'bouclier') return `${who}, le plus rapide à voter, gagne un bouclier contre le prochain malus&nbsp;!`;
-  if (seg.id === 'moins2') return `${who}, en tête, perd 2 points&nbsp;!`;
-  if (seg.id === 'flou') return `${who}, en tête, aura une question floue jusqu'au premier vote&nbsp;!`;
-  return `${who}, en tête, aura les noms mélangés à la prochaine manche&nbsp;!`;
+  const w = view.wheel, seg = WHEEL[w.index], who = esc(w.target || T('newPlayer'));
+  if (w.shielded) return T('wheelShield', who, esc(T('wheel')[seg.id]));
+  return T({ double: 'wheelDouble', lettre: 'wheelLetter', bouclier: 'wheelShieldWon', moins2: 'wheelMinus', flou: 'wheelBlur', melange: 'wheelShuffle' }[seg.id], who);
 }
 
 function spinWheel() {
@@ -563,7 +562,7 @@ const CYCLE = [['photo', 1], ['sticker', 1], ['photo', 1], ['sticker', 1], ['quo
 
 function montageScreen() {
   return `<div class="edit"><div class="edit-frame" data-frame></div></div>
-    ${view.host ? '<button class="link edit-skip" data-act="skip">Passer</button>' : ''}`;
+    ${view.host ? `<button class="link edit-skip" data-act="skip">${T('skip')}</button>` : ''}`;
 }
 
 function runMontage() {
@@ -590,7 +589,7 @@ function runMontage() {
     const pool = same.length ? same : ready;
     return pool.length ? pool[seen[want]++ % pool.length] : null;
   };
-  show(title('WHO IS BRO ?'), 'shake');
+  show(title(T('montageIntro')), 'shake');
   const end = MONTAGE_MS - beat * 4;
   let at = beat * 4;
   for (let n = 0; at < end; n++) {
@@ -606,7 +605,7 @@ function runMontage() {
     }, at));
     at += beats * beat;
   }
-  boardTimers.push(setTimeout(() => show(title('ET LE GAGNANT EST…'), 'punch'), end));
+  boardTimers.push(setTimeout(() => show(title(T('montageEnd')), 'punch'), end));
 }
 
 let boardTimers = [];
@@ -644,28 +643,28 @@ function revealScreen() {
   const ownerPlayer = v.players.find(p => p.author === r.answer);
   const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score);
   return `
-    <div class="hud"><span>Manche ${r.n}/${r.total}</span></div>
+    <div class="hud"><span>${T('round', r.n, r.total)}</span></div>
     ${bubble(r)}
-    <p class="answer">C'est tout <b>${esc(r.answer)}</b>&nbsp;!</p>
+    <p class="answer">${T('answer', esc(r.answer))}</p>
     <p class="stat">${statLine(r)}</p>
     ${r.example ? `<figure class="example"><figcaption>${esc(r.answer)}</figcaption><p>${highlight(r.example, r.text)}</p></figure>` : ''}
-    ${ownerPlayer && r.votes[ownerPlayer.id] && r.votes[ownerPlayer.id] !== r.answer ? `<p class="fun">Même ${esc(r.answer)} n'a pas trouvé&nbsp;!</p>` : ''}
+    ${ownerPlayer && r.votes[ownerPlayer.id] && r.votes[ownerPlayer.id] !== r.answer ? `<p class="fun">${T('notEvenOwner', esc(r.answer))}</p>` : ''}
     <ul class="votes">
-      <li class="head"><span>Joueur</span><span>a voté</span><span>points</span></li>
+      <li class="head"><span>${T('colPlayer')}</span><span>${T('colVoted')}</span><span>${T('colPoints')}</span></li>
       ${rows.map(p => {
         const vote = r.votes[p.id];
         const ok = vote === r.answer;
         const delta = r.deltas[p.id] || 0;
         return `<li class="${vote ? (ok ? 'ok' : 'ko') : 'none'} ${p.connected ? '' : 'off'}">
-          <span class="name">${esc(nameOf(p))}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span>
-          <span class="vote">${vote ? esc(vote) : 'pas voté'}</span>
+          <span class="name">${esc(nameOf(p))}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span>
+          <span class="vote">${vote ? esc(vote) : T('noVote')}</span>
           <span class="pts">${delta ? `<i class="${delta > 0 ? 'up' : 'down'}">${delta > 0 ? '+' : '−'}${Math.abs(delta)}</i>` : ''}<b>${p.score}</b></span>
         </li>`;
       }).join('')}
     </ul>
     ${v.host
-      ? `<div class="actions"><button class="primary big" data-act="next">Voir le classement</button></div>`
-      : `<p class="wait">En attente de l'hôte…</p>`}`;
+      ? `<div class="actions"><button class="primary big" data-act="next">${T('seeRanking')}</button></div>`
+      : `<p class="wait">${T('waitHost')}</p>`}`;
 }
 
 function endScreen() {
@@ -673,14 +672,14 @@ function endScreen() {
   const ranking = [...v.players].filter(p => p.author).sort((a, b) => b.score - a.score);
   const rank = p => 1 + ranking.filter(q => q.score > p.score).length;   // ex æquo : même rang
   return `
-    ${v.slides?.length ? '<h2>Les moments du groupe</h2><section class="slideshow" data-slides></section>' : ''}
-    <header class="brand small"><h1>Classement</h1></header>
+    ${v.slides?.length ? `<h2>${T('moments')}</h2><section class="slideshow" data-slides></section>` : ''}
+    <header class="brand small"><h1>${T('ranking')}</h1></header>
     <ol class="ranking">${ranking.map(p => `
-      <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(p.author)}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
-    <h2>Le portrait de chacun</h2>
+      <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(p.author)}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
+    <h2>${T('portraits')}</h2>
     <div class="portraits">${v.portraits.map(x => `
       <div class="portrait"><b>${esc(x.name)}</b><p>${x.tics.map(t => `<span>${esc(t)}</span>`).join('')}</p></div>`).join('')}</div>
-    ${v.host ? '<div class="actions"><button class="primary big" data-act="replay">Rejouer</button></div>' : `<p class="wait">L'hôte peut relancer une partie.</p>`}`;
+    ${v.host ? `<div class="actions"><button class="primary big" data-act="replay">${T('replay')}</button></div>` : `<p class="wait">${T('hostCanReplay')}</p>`}`;
 }
 
 // Diaporama de fin : une photo toutes les 4 secondes, avec les emojis envoyés juste après.
@@ -693,11 +692,11 @@ function mountSlides() {
   if (!box) return;
   const next = () => {
     const ready = view.slides.filter(s => mediaCache.has(s.id));
-    if (!ready.length) { box.innerHTML = '<p class="wait">Chargement des photos…</p>'; return; }
+    if (!ready.length) { box.innerHTML = `<p class="wait">${T('loadingPhotos')}</p>`; return; }
     const s = ready[slideIndex++ % ready.length];
     box.innerHTML = `<figure class="slide">
       <img src="${mediaCache.get(s.id)}" alt="">
-      <figcaption>Photo de ${esc(s.author)}</figcaption>
+      <figcaption>${T('photoBy', esc(s.author))}</figcaption>
       ${s.emojis.length ? `<div class="reacts">${s.emojis.map((x, i) =>
         `<span style="--i:${i}">${esc(x.e)}${x.n > 1 ? `<small>×${x.n}</small>` : ''}</span>`).join('')}</div>` : ''}
     </figure>`;
@@ -739,9 +738,10 @@ $app.addEventListener('click', async e => {
   const { act } = el.dataset;
   if (act === 'demo') {
     demoGame = true;                          // la démo ne compte pas dans le total
-    const name = 'WhatsApp Chat - Les Potes (avec médias).zip';
+    const name = T('demoFile');
     host(() => fetch('samples/' + encodeURIComponent(name)).then(r => r.blob()).then(b => new File([b], name, { type: 'application/zip' })));
   }
+  else if (act === 'lang') { setLang(lang === 'fr' ? 'en' : 'fr'); saveLang(lang); render(); }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
   else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });
   else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
@@ -753,8 +753,8 @@ $app.addEventListener('click', async e => {
   else if (act === 'share') {
     const url = inviteUrl(view.code);
     try {
-      if (navigator.share) await navigator.share({ title: 'Who is bro ?', text: `Rejoins la partie ${view.code}`, url });
-      else { await navigator.clipboard.writeText(url); el.textContent = 'Lien copié'; }
+      if (navigator.share) await navigator.share({ title: 'Who is bro ?', text: T('shareText', view.code), url });
+      else { await navigator.clipboard.writeText(url); el.textContent = T('linkCopied'); }
     } catch { /* partage annulé */ }
   }
 });
