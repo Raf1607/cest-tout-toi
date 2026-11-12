@@ -2,7 +2,7 @@
 
 Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son téléphone.
 
-**Jouer : https://raf1607.github.io/cest-tout-toi/**
+**Jouer : https://whoisbro.lol**
 
 ## Lancer une partie
 
@@ -56,6 +56,7 @@ node tools/make-sample.mjs                                     # régénère sam
 | | |
 |---|---|
 | `index.html` | page et styles |
+| `CNAME` | domaine du site (whoisbro.lol), lu par GitHub Pages |
 | `confidentialite.html` | page « protection des données », liée depuis l'accueil |
 | `js/whatsapp.js` | lecture des exports iPhone et Android |
 | `js/tics.js` | détection des tics |
