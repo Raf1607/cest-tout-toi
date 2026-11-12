@@ -812,6 +812,7 @@ function endScreen() {
     <header class="brand small"><h1>${T('ranking')}</h1></header>
     <ol class="ranking">${ranking.map(p => `
       <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(p.author)}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
+    <button class="big share-game" data-act="share-game">${T('shareGame')}</button>
     <h2>${T('portraits')}</h2>
     <div class="portraits">${v.portraits.map(x => `
       <div class="portrait"><b>${esc(x.name)}</b><p>${x.tics.map(t => `<span>${esc(t)}</span>`).join('')}</p></div>`).join('')}</div>
@@ -887,6 +888,14 @@ $app.addEventListener('click', async e => {
   else if (act === 'start' || act === 'next' || act === 'replay' || act === 'skip') {
     send({ t: act });
     if (act === 'start' && game?.phase === 'question') countGame();
+  }
+  else if (act === 'share-game') {
+    // Message neutre : ni prénom ni score, seulement le lien du jeu.
+    const text = T('shareGameText'), url = T('shareGameUrl');
+    try {
+      if (navigator.share) await navigator.share({ title: 'Who is bro ?', text, url });
+      else { await navigator.clipboard.writeText(`${text} ${url}`); el.textContent = T('linkCopied'); }
+    } catch { /* partage annulé */ }
   }
   else if (act === 'share') {
     const url = inviteUrl(view.code);
