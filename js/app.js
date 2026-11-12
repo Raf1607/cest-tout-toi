@@ -8,6 +8,7 @@ import { BPM, unlockAudio, playPhonk } from './phonk.js';
 import { openRoom, Client, CODE_LENGTH } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
 import { pickLang, saveLang, tr } from './i18n.js';
+import { saveSave, loadSave, pruneSaves, clearSaves } from './resume.js';
 
 const $app = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -16,6 +17,7 @@ const params = new URLSearchParams(location.search);
 const store = {
   get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* navigation privée */ } },
+  remove(k) { try { sessionStorage.removeItem(k); } catch { /* navigation privée */ } },
 };
 const myId = store.get('ctt-id') || (() => {
   const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -110,6 +112,15 @@ async function host(getFile) {
       throw new Error(T('notEnough', fmt(chat.messages.length), analysis.authors.length, withTics.length, withTics.map(a => a.name).join(', ')));
     }
     setUi({ busy: T('creating') });
+    await launch(analysis, entries, file);
+  } catch (err) {
+    console.error(err);
+    setUi({ screen: 'home', error: err.message });
+  }
+}
+
+// Ouvre la salle et tient la partie. snap : partie à reprendre après un rechargement de la page.
+async function launch(analysis, entries, file, snap = null) {
     const conns = new Map();
     // Le média de la manche est préparé une fois, puis envoyé à chaque téléphone (et à ceux qui
     // arrivent ou se reconnectent en cours de manche). Celui de la manche suivante part en avance.
@@ -179,9 +190,19 @@ async function host(getFile) {
         } else if (pid && game.players.has(pid)) game.handle(pid, msg);   // les téléphones en attente ne peuvent rien faire
       });
       conn.on('close', () => { if (pid && conns.get(pid) === conn) { conns.delete(pid); game.leave(pid); } });
-    });
+    }, snap?.code);
     const admitted = new Set();
-    game = new Game(analysis, room.code, myId, () => {
+    game = snap ? Game.restore(analysis, snap) : new Game(analysis, room.code, myId, null);
+    // La partie est gardée sur ce téléphone (jamais ailleurs) : un rechargement par erreur la reprend.
+    store.set('ctt-hosting', '1');
+    if (!snap) saveSave(`${myId}:session`, { analysis, file, demo: demoGame }).catch(err => console.warn('Sauvegarde impossible', err));
+    let saving = null;
+    const persist = () => {
+      clearTimeout(saving);
+      saving = setTimeout(() => saveSave(`${myId}:state`, game.snapshot()).catch(() => { /* stockage plein : tant pis */ }), 300);
+    };
+    setInterval(persist, 60000);   // signe de vie : une sauvegarde que plus aucun onglet ne touche sera effacée
+    game.onChange = () => {
       for (const [pid, conn] of conns) {
         if (!conn.open || !game.players.has(pid)) continue;     // seuls les joueurs acceptés reçoivent la partie
         if (!admitted.has(pid)) { admitted.add(pid); catchUp(conn); }
@@ -189,14 +210,29 @@ async function host(getFile) {
       }
       show(game.view(myId));
       shareRound();
-    });
+      persist();
+    };
     game.onAdmit = turnAway;
     window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
     ui.screen = 'game';
-    show(game.view(myId));
+    game.changed();
+}
+
+// Au chargement : l'hôte a rechargé sa page en pleine partie ? On la reprend, avec le même code.
+// Sinon (onglet fermé puis rouvert), une ancienne sauvegarde est effacée.
+async function resumeHost() {
+  setUi({ screen: 'busy', busy: T('resuming') });
+  try {
+    const session = await loadSave(`${myId}:session`);
+    const snap = await loadSave(`${myId}:state`);
+    if (!session || !snap || snap.hostId !== myId) throw new Error('nothing');
+    demoGame = !!session.demo;
+    const { entries } = session.file ? await readExport(session.file) : { entries: new Map() };
+    await launch(session.analysis, entries, session.file, snap);
   } catch (err) {
-    console.error(err);
-    setUi({ screen: 'home', error: err.message });
+    store.remove('ctt-hosting');
+    clearSaves(myId);
+    setUi({ screen: 'home', error: err.message === 'nothing' ? '' : T('resumeFailed') });
   }
 }
 
@@ -880,5 +916,9 @@ $app.addEventListener('input', e => {
 });
 
 // Lien d'invitation : on rejoint tout de suite si on connaît déjà le prénom, sinon on le demande.
-if (params.get('p') && store.get('ctt-name')) join(params.get('p'));
-else render();
+pruneSaves(myId, 5 * 60 * 1000);   // parties abandonnées (onglet fermé depuis plus de 5 minutes)
+if (store.get('ctt-hosting')) resumeHost();
+else {
+  if (params.get('p') && store.get('ctt-name')) join(params.get('p'));
+  else render();
+}

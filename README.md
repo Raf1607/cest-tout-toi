@@ -13,7 +13,7 @@ Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son t
 
 À chaque manche, une expression (ou une façon de commencer ou finir ses messages), un vrai message typique de quelqu'un (« qui a écrit ça ? ») ou le message culte du groupe, un emoji, un sticker, un GIF ou une habitude (« qui envoie le plus de vocaux ? »), un emoji préféré ou un titre (le fantôme du groupe, celui qui ne s'arrête jamais de parler, l'explosif en majuscules, qui répond le plus vite, qui relance le groupe, qui a le dernier mot, qui écrit la nuit, qui rit de tout…) s'affiche sur tous les téléphones : chacun vote pour celui ou celle qui la dit tout le temps. Dès le premier vote, il ne reste que 7 secondes aux autres, et la manche se termine dès que tout le monde a voté. Un petit classement en haut à droite montre les points de chacun et qui a déjà voté, mais pas pour qui ; on peut changer d'avis tant que la manche n'est pas finie. 2 points par bonne réponse, 1 point en moins par mauvaise (jamais en dessous de zéro), et un classement animé de 3 secondes s'affiche entre les manches. Après une manche sur quatre en moyenne, tirée au hasard, une roue de la fortune (le résultat reste affiché 6 secondes) (désactivable par l'hôte) donne un bonus au premier qui a voté (points doublés, une lettre du prénom à trouver, bouclier) ou un malus au premier du classement (−2 points, question floue jusqu'au premier vote, noms mélangés sur ses boutons). L'hôte passe à la manche suivante quand le groupe est prêt. À la fin, avec un export avec médias, un montage de 15 secondes (photos, stickers, GIF et messages drôles coupés en rythme sur une musique phonk synthétisée dans le navigateur, sans droits) précède le classement final, où un diaporama fait défiler les photos qui ont le plus fait réagir le groupe, avec les emojis envoyés juste après (option de l'hôte, activée par défaut).
 
-**Pendant la partie, l'hôte garde la page ouverte et l'écran allumé** (sur iPhone, mettre le verrouillage automatique sur *Jamais* par sécurité) : si sa page se ferme, la partie s'arrête. Les autres peuvent recharger la page, ils reviennent avec leur nom et leur score.
+**Pendant la partie, l'hôte garde la page ouverte et l'écran allumé** (sur iPhone, mettre le verrouillage automatique sur *Jamais* par sécurité). S'il recharge la page par erreur, la partie reprend où elle en était, avec le même code : son téléphone la garde (IndexedDB, `js/resume.js`) et les invités se reconnectent tout seuls. Si l'onglet de l'hôte est fermé, la partie s'arrête. Les autres peuvent recharger la page, ils reviennent avec leur nom et leur score. Le « tirer pour recharger » est désactivé.
 
 ## Comment ça marche
 
@@ -72,6 +72,7 @@ npm install && node tools/video/render.mjs                     # vidéo de prés
 | `js/game.js` | règles et déroulé de la partie (côté hôte) |
 | `js/net.js` | connexions pair-à-pair |
 | `js/records.js` | records (vitesse de réponse, relances, nuit…) et emoji préféré |
+| `js/resume.js` | partie en cours gardée sur le téléphone de l'hôte, pour reprendre après un rechargement |
 | `js/phonk.js` | musique du montage, synthétisée dans le navigateur |
 | `js/media.js` | lecture du zip, préparation et envoi des images |
 | `js/app.js` | écrans |

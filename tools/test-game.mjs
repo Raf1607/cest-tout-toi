@@ -248,4 +248,33 @@ assert.equal(media.phase, 'end');
   clearTimeout(en.timer);
 }
 
+// Rechargement de la page de l'hôte : la partie reprend telle quelle (structured clone, comme IndexedDB).
+{
+  const a = new Game(analysis, 'RELO', 'h', () => {});
+  a.wheelChance = 0;
+  a.join('b');
+  a.handle('h', { t: 'claim', author: 'Julie Moreau' });
+  a.handle('b', { t: 'claim', author: 'Karim B' });
+  a.handle('h', { t: 'settings', settings: { absent: false } });
+  a.handle('h', { t: 'start' });
+  const answer = a.round.card.owner;
+  a.handle('b', { t: 'vote', n: 1, author: answer });
+  a.reveal(); a.next(); a.advance();
+  a.handle('h', { t: 'vote', n: 2, author: a.round.card.owner });
+  const snap = structuredClone(a.snapshot());
+  clearTimeout(a.timer);
+  const r = Game.restore(structuredClone(analysis), snap);
+  assert.equal(r.code, 'RELO');
+  assert.equal(r.phase, 'question');
+  assert.equal(r.round.n, 2, 'même manche');
+  assert.equal(r.round.votes.h, a.round.votes.h, 'les votes sont gardés');
+  assert.equal(r.players.get('b').score, a.players.get('b').score, 'les scores sont gardés');
+  assert.ok(!r.players.get('b').connected && r.players.get('h').connected, 'les invités doivent revenir');
+  assert.ok(r.round.endsAt - Date.now() >= 14000, 'le temps de revenir avant la fin de la manche');
+  assert.equal(r.request('b', 'Karim'), 'ok', 'un invité déjà accepté revient directement');
+  assert.equal(r.request('z', 'Inconnu'), 'closed', 'toujours fermée aux nouveaux');
+  assert.equal(r.view('b').round.n, 2);
+  clearTimeout(r.timer);
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

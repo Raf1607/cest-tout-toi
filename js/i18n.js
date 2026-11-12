@@ -57,6 +57,8 @@ const FR = {
   chatTitle: 'la discussion',
   notEnough: (msgs, members, ok, names) => `Pas assez de matière pour jouer : ${msgs} messages lus, ${members} membres avec au moins 20 messages, ${ok} avec des questions possibles (${names || 'aucun'}).`,
   creating: 'Création de la partie…',
+  resuming: 'Reprise de la partie en cours…',
+  resumeFailed: "Impossible de reprendre la partie en cours. Relance une nouvelle partie.",
   // Invité
   codeLength: n => `Le code de la partie fait ${n} lettres.`,
   nameNeeded: "Indique ton prénom : l'hôte doit savoir qui demande à entrer.",
@@ -225,6 +227,8 @@ const EN = {
   chatTitle: 'the chat',
   notEnough: (msgs, members, ok, names) => `Not enough to play with: ${msgs} messages read, ${members} members with at least 20 messages, ${ok} with possible questions (${names || 'none'}).`,
   creating: 'Setting up the game…',
+  resuming: 'Resuming the game…',
+  resumeFailed: "Couldn't resume the game. Start a new one.",
   codeLength: n => `The game code is ${n} letters long.`,
   nameNeeded: 'Enter your first name: the host needs to know who wants in.',
   connecting: code => `Joining game ${code}…`,

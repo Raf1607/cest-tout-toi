@@ -370,6 +370,37 @@ export class Game {
 
   changed() { this.onChange?.(); }
 
+  // Instantané de la partie (données simples), gardé sur le téléphone de l'hôte pour reprendre après
+  // un rechargement de la page.
+  snapshot() {
+    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking } = this;
+    return {
+      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking,
+      used: [...this.used], shields: [...this.shields], allowed: [...this.allowed], refused: [...this.refused],
+      players: [...this.players.values()],
+    };
+  }
+
+  // Reprise : les invités sont considérés déconnectés jusqu'à ce qu'ils reviennent (ils sont déjà
+  // acceptés, ils rentrent directement), et les minuteurs repartent en leur laissant le temps.
+  static restore(analysis, snap) {
+    const g = new Game(analysis, snap.code, snap.hostId, null);
+    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking']) g[k] = snap[k];
+    if (g.round) g.round.card = g.deck[g.index] || g.round.card;
+    g.used = new Set(snap.used);
+    g.shields = new Set(snap.shields);
+    g.allowed = new Set(snap.allowed);
+    g.refused = new Set(snap.refused);
+    g.players = new Map(snap.players.map(p => [p.id, { ...p, connected: p.id === snap.hostId }]));
+    const RESUME_GRACE = 15000;
+    if (g.phase === 'question') {
+      g.round.endsAt = Math.max(g.round.endsAt, Date.now() + RESUME_GRACE);
+      g.timer = setTimeout(() => g.reveal(), g.round.endsAt - Date.now() + 300);
+    } else if (g.phase === 'ranking' || g.phase === 'wheel') g.timer = setTimeout(() => g.advance(), 2000);
+    else if (g.phase === 'montage') g.timer = setTimeout(() => g.finish(), MONTAGE_MS);
+    return g;
+  }
+
   // Diaporama de fin : les photos les plus commentées du groupe, si l'hôte l'a laissé activé.
   slides() {
     if (!this.settings.slideshow) return [];

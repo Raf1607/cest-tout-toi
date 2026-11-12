@@ -29,14 +29,17 @@ function keepRegistered(peer) {
 const OFFLINE = 'Impossible de joindre le serveur de mise en relation. Vérifie la connexion internet.';
 
 // Hôte : ouvre la salle, appelle onConnection(conn) pour chaque téléphone qui s'y connecte.
-export async function openRoom(onConnection) {
+// wanted : le code d'une partie à reprendre après un rechargement de la page. Le serveur de mise en
+// relation peut le croire encore pris quelques secondes (l'ancienne page vient de se fermer) : on insiste.
+export async function openRoom(onConnection, wanted = null) {
   for (let attempt = 0; ; attempt++) {
-    const code = newCode();
+    const code = wanted || newCode();
     let peer;
     try {
       peer = await openPeer(PREFIX + code);
     } catch (err) {
-      if (err.type === 'unavailable-id' && attempt < 5) continue;   // code déjà pris par une autre partie
+      if (err.type === 'unavailable-id' && wanted && attempt < 15) { await new Promise(r => setTimeout(r, 2000)); continue; }
+      if (err.type === 'unavailable-id' && !wanted && attempt < 5) continue;   // code déjà pris par une autre partie
       throw new Error(OFFLINE);
     }
     keepRegistered(peer);
@@ -83,7 +86,7 @@ export class Client {
   retry() {
     if (this.timer || this.peer.destroyed) return;
     this.conn = null;
-    if (++this.failures > 15) { this.close(); this.onStatus('gone'); return; }
+    if (++this.failures > 40) { this.close(); this.onStatus('gone'); return; }   // ~80 s : le temps que l'hôte recharge sa page
     this.onStatus('lost');
     this.timer = setTimeout(() => {
       this.timer = null;
