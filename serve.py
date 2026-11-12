@@ -22,7 +22,7 @@ import time
 from urllib.parse import unquote
 
 PORT = int(os.environ.get('PORT', 8790))
-ALLOWED = re.compile(r'^/(index\.html)?$|^/js/[A-Za-z0-9_.-]+\.js$|^/samples/[^/]+\.(txt|zip)$')
+ALLOWED = re.compile(r'^/(index\.html|confidentialite\.html)?$|^/js/[A-Za-z0-9_.-]+\.js$|^/samples/[^/]+\.(txt|zip)$')
 
 
 class GameServer(http.server.ThreadingHTTPServer):

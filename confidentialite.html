@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16131d">
+<title>Protection des données · Who is bro ?</title>
+<meta name="description" content="Ce que devient ta discussion WhatsApp quand tu joues à Who is bro ?">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='8' width='56' height='40' rx='14' fill='%23ffcf3f'/%3E%3Cpath d='M16 46 12 60 28 47z' fill='%23ffcf3f'/%3E%3Ctext x='32' y='37' font-size='26' font-family='Arial' font-weight='bold' text-anchor='middle' fill='%2316131d'%3E%C2%AB%C2%BB%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #16131d; --surface: #221e2c; --line: #3a3448;
+    --ink: #f5f1e8; --muted: #a7a1b5; --accent: #ffcf3f; --accent-ink: #1e1a10; --good: #52d18f;
+    --display: 'Bricolage Grotesque', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  main {
+    max-width: 640px; margin: 0 auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom));
+  }
+  .back { display: inline-block; margin: 8px 0 20px; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .back:hover { color: var(--ink); }
+  h1, h2 { font-family: var(--display); letter-spacing: -0.01em; }
+  h1 { font-size: 34px; line-height: 1.1; margin: 0 0 10px; }
+  h1 span { background: var(--accent); color: var(--accent-ink); padding: 0 .14em; border-radius: .2em; }
+  h2 { font-size: 21px; margin: 34px 0 10px; }
+  p, ul { margin: 0 0 12px; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  .lead { color: var(--muted); }
+  .muted { color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+  b { color: var(--ink); }
+  .summary { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin: 22px 0 6px; }
+  .summary ul { list-style: none; padding: 0; margin: 0; }
+  .summary li { padding-left: 26px; position: relative; margin-bottom: 8px; }
+  .summary li:last-child { margin-bottom: 0; }
+  .summary li::before { content: '✓'; position: absolute; left: 2px; color: var(--good); font-weight: 800; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 12px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 8px 9px 0; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td:first-child { font-weight: 600; white-space: nowrap; padding-right: 14px; }
+  @media (max-width: 420px) { td:first-child { white-space: normal; } }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">← Retour au jeu</a>
+  <h1>Protection des données</h1>
+  <p class="lead">Ce que devient ta discussion WhatsApp quand tu joues à Who is <b>bro</b>&nbsp;?</p>
+
+  <div class="summary">
+    <ul>
+      <li>La discussion est lue <b>sur le téléphone de l'hôte</b>, jamais envoyée à un serveur.</li>
+      <li>Rien n'est gardé : fermer la page efface tout.</li>
+      <li>Seuls les joueurs <b>acceptés par l'hôte</b> reçoivent quelque chose, et seulement ce qu'il faut pour jouer.</li>
+      <li>Pas de compte, pas de cookies, pas de pub, pas de suivi des visiteurs.</li>
+    </ul>
+  </div>
+
+  <h2>La discussion importée</h2>
+  <p>Quand l'hôte importe l'export WhatsApp (fichier <i>.txt</i> ou <i>.zip</i>), le jeu le lit et l'analyse <b>dans la page, sur son téléphone</b>. Le fichier n'est envoyé à aucun serveur, ni le nôtre (il n'y en a pas), ni celui de qui que ce soit d'autre.</p>
+  <p>Rien n'est enregistré : ni la discussion, ni l'analyse, ni les scores. Quand la page se ferme, tout disparaît. Le fichier exporté, lui, reste là où WhatsApp l'a enregistré (dans <i>Fichiers</i> sur iPhone)&nbsp;: tu peux le supprimer après la partie.</p>
+
+  <h2>Ce que reçoivent les autres joueurs</h2>
+  <p>Les téléphones des joueurs se connectent directement à celui de l'hôte. Ils reçoivent uniquement&nbsp;:</p>
+  <ul>
+    <li>la liste des membres du groupe (prénoms tels qu'enregistrés dans WhatsApp) et leur nombre de messages, pour que chacun choisisse qui il est&nbsp;;</li>
+    <li>à chaque manche, l'élément à deviner&nbsp;: une expression, un emoji, un titre (« le fantôme du groupe »…), un vrai message court, un sticker ou un GIF&nbsp;;</li>
+    <li>à la révélation, la réponse, un message d'exemple et quelques chiffres&nbsp;;</li>
+    <li>avec un export avec médias&nbsp;: les stickers et GIF des manches, les photos et stickers du montage de fin et du diaporama (désactivables par l'hôte), et des photos dans les manches seulement si l'hôte active cette option.</li>
+  </ul>
+  <p>Le reste de la discussion ne quitte jamais le téléphone de l'hôte. Comme pour tout ce qui s'affiche sur un écran, un joueur peut faire une capture&nbsp;: ne joue qu'avec des gens de confiance.</p>
+
+  <h2>Qui peut entrer dans une partie</h2>
+  <ul>
+    <li>Chaque partie a un code de 6 lettres (191 millions de possibilités), impossible à deviner au hasard.</li>
+    <li>Un téléphone qui arrive donne un prénom et <b>attend que l'hôte l'accepte</b>. Avant ça, il ne reçoit rien&nbsp;: ni noms, ni messages, ni photos. Un refus est définitif pour la partie.</li>
+    <li>Une fois la partie lancée, plus personne de nouveau n'entre. Seuls les joueurs déjà acceptés peuvent revenir après une coupure.</li>
+  </ul>
+  <p>Conseil&nbsp;: partage le lien ou le QR code seulement avec les joueurs, pas dans un groupe plus large.</p>
+
+  <h2>Comment les téléphones communiquent</h2>
+  <p>Les échanges passent en pair-à-pair (WebRTC), <b>chiffrés de bout en bout</b> entre les téléphones. Pour se trouver, les téléphones passent par des services techniques qui ne voient jamais le contenu de la partie&nbsp;:</p>
+  <ul>
+    <li><b>PeerJS</b> (serveur public de mise en relation)&nbsp;: il voit un identifiant technique de la partie et les adresses IP, le temps de mettre les téléphones en contact.</li>
+    <li><b>Google STUN</b>&nbsp;: aide chaque téléphone à connaître sa propre adresse sur internet.</li>
+    <li><b>Relais PeerJS</b>&nbsp;: si un réseau (certaines 4G, Wi-Fi d'entreprise) empêche la connexion directe, les échanges transitent par un relais, toujours chiffrés, donc illisibles pour lui.</li>
+  </ul>
+
+  <h2>Les autres services utilisés</h2>
+  <table>
+    <tr><th>Service</th><th>Pourquoi</th><th>Ce qu'il voit</th></tr>
+    <tr><td>GitHub Pages</td><td>héberge le site</td><td>ton adresse IP et la page demandée, comme tout site</td></tr>
+    <tr><td>jsDelivr, cdnjs</td><td>fournissent les bibliothèques du jeu (connexion, lecture du zip, QR code, écran allumé)</td><td>ton adresse IP</td></tr>
+    <tr><td>Google Fonts</td><td>police des titres</td><td>ton adresse IP</td></tr>
+    <tr><td>Abacus</td><td>compteur de parties de l'accueil</td><td>un simple « +1 » quand une partie est lancée, avec l'adresse IP de l'hôte&nbsp;; rien sur la partie</td></tr>
+  </table>
+  <p>Aucun de ces services ne reçoit la discussion, les noms ou les messages.</p>
+
+  <h2>Ce qui est gardé sur ton téléphone</h2>
+  <p>Pour pouvoir revenir dans la partie après un rechargement, la page garde dans l'onglet un identifiant tiré au hasard et le prénom que tu as tapé pour entrer. Ils sont effacés quand tu fermes l'onglet. Pas de cookies.</p>
+
+  <h2>Vérifier par toi-même</h2>
+  <p>Le code du jeu est public&nbsp;: <a href="https://github.com/Raf1607/cest-tout-toi">github.com/Raf1607/cest-tout-toi</a>. Les discussions qui s'y trouvent (dossier <i>samples</i>) sont inventées, pour la démo.</p>
+
+  <p class="muted" style="margin-top: 34px">Dernière mise à jour&nbsp;: 12 novembre 2026.</p>
+  <a class="back" href="./">← Retour au jeu</a>
+</main>
+</body>
+</html>

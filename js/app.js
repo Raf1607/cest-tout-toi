@@ -303,7 +303,6 @@ function homeScreen() {
     </section>
     <section class="card">
       <h2>Créer une partie</h2>
-      <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que ce qu'il faut deviner (expressions, quelques vrais messages, stickers…).</p>
       <label class="button primary file">Importer la discussion<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <details>
         <summary>Comment exporter la discussion&nbsp;?</summary>
@@ -311,6 +310,8 @@ function homeScreen() {
         <p><b>Android</b> — ouvre la discussion, menu ⋮ › <i>Plus</i> › <i>Exporter la discussion</i> › <i>Inclure les médias</i> (ou <i>Sans médias</i>), et enregistre le fichier sur le téléphone.</p>
         <p><b>Avec les médias</b>, le jeu montre aussi les stickers et GIF fétiches de chacun (et, si l'hôte l'active, des photos). Le fichier est plus gros et ne garde que les messages les plus récents. Sans médias, il y a quand même des questions du genre « qui envoie le plus de stickers ».</p>
       </details>
+      <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que ce qu'il faut deviner (expressions, quelques vrais messages, stickers…).</p>
+      <a class="privacy" href="confidentialite.html">Comment tes données sont protégées</a>
       <button class="link" data-act="demo">Essayer avec une discussion d'exemple</button>
     </section>`;
 }

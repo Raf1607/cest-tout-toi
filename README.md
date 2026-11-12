@@ -56,6 +56,7 @@ node tools/make-sample.mjs                                     # régénère sam
 | | |
 |---|---|
 | `index.html` | page et styles |
+| `confidentialite.html` | page « protection des données », liée depuis l'accueil |
 | `js/whatsapp.js` | lecture des exports iPhone et Android |
 | `js/tics.js` | détection des tics |
 | `js/game.js` | règles et déroulé de la partie (côté hôte) |
