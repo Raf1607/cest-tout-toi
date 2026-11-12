@@ -314,7 +314,11 @@ function homeScreen() {
       <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que ce qu'il faut deviner (expressions, quelques vrais messages, stickers…).</p>
       <a class="privacy" href="confidentialite.html">Comment tes données sont protégées</a>
       <button class="link" data-act="demo">Essayer avec une discussion d'exemple</button>
-    </section>`;
+    </section>
+    <footer class="foot">
+      <a href="video/who-is-bro.mp4">▶ Voir la vidéo</a>
+      <a href="qui-sommes-nous.html">Qui sommes-nous&nbsp;?</a>
+    </footer>`;
 }
 
 function playerList(v) {
