@@ -6,7 +6,7 @@ Jeu d'ambiance pour un groupe WhatsApp, à partir de 2 joueurs, chacun sur son t
 
 ## Lancer une partie
 
-1. **Exporter la discussion** (sur le téléphone de l'hôte) : dans WhatsApp, ouvrir le groupe, toucher son nom en haut, *Exporter la discussion* › *Joindre les médias* (ou *Sans médias*) › *Enregistrer dans Fichiers*. Sur Android : menu ⋮ › *Plus* › *Exporter la discussion*. Avec les médias, le jeu montre en plus les stickers et GIF fétiches de chacun ; le fichier est plus gros et WhatsApp n'y garde que les messages les plus récents.
+1. **Exporter la discussion** (sur le téléphone de l'hôte) : dans WhatsApp, ouvrir le groupe, toucher son nom en haut, *Exporter la discussion* › *Joindre les médias* (ou *Sans médias*) › *Enregistrer dans Fichiers*. Sur Android : menu ⋮ › *Plus* › *Exporter la discussion*. Avec les médias, c'est bien plus fun (stickers et GIF fétiches, montage photo de fin) ; WhatsApp n'y met que les 10 000 derniers messages environ, contre environ 40 000 sans médias.
 2. **Créer la partie** : ouvrir le lien du jeu, toucher *Importer la discussion* et choisir le fichier exporté. Le téléphone affiche un code de 6 lettres et un QR code. Astuce iPhone : Partager › *Sur l'écran d'accueil* pour avoir le jeu comme une appli.
 3. **Faire entrer les autres** : ils scannent le QR code (ou tapent le code), en Wi-Fi ou en 4G, et donnent leur prénom. L'hôte accepte chaque demande (et refuse les inconnus) ; chacun choisit ensuite qui il est dans la discussion.
 4. **Lancer** : l'hôte règle le nombre de manches et le temps de vote, puis touche *Lancer la partie*. Le bouton s'active quand chaque joueur a choisi son nom ; pas besoin que tous les membres du groupe soient là (l'option *Inclure les membres absents* les ajoute quand même au jeu).

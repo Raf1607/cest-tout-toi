@@ -308,7 +308,8 @@ function homeScreen() {
         <summary>Comment exporter la discussion&nbsp;?</summary>
         <p><b>iPhone</b> — ouvre la discussion, touche le nom du groupe en haut, puis <i>Exporter la discussion</i> › <i>Joindre les médias</i> (ou <i>Sans médias</i>) › <i>Enregistrer dans Fichiers</i>. Reviens ici et choisis le fichier.</p>
         <p><b>Android</b> — ouvre la discussion, menu ⋮ › <i>Plus</i> › <i>Exporter la discussion</i> › <i>Inclure les médias</i> (ou <i>Sans médias</i>), et enregistre le fichier sur le téléphone.</p>
-        <p><b>Avec les médias</b>, le jeu montre aussi les stickers et GIF fétiches de chacun (et, si l'hôte l'active, des photos). Le fichier est plus gros et ne garde que les messages les plus récents. Sans médias, il y a quand même des questions du genre « qui envoie le plus de stickers ».</p>
+        <p><b>Avec les médias, c'est bien plus fun</b>&nbsp;: stickers et GIF fétiches de chacun, montage photo en musique à la fin (et, si l'hôte l'active, des photos à deviner). Seule limite&nbsp;: WhatsApp n'y met que les 10&nbsp;000 derniers messages environ.</p>
+        <p><b>Sans médias</b>, WhatsApp va plus loin dans le passé (environ 40&nbsp;000 messages), mais pas de stickers, GIF ni montage&nbsp;: juste des questions du genre « qui envoie le plus de stickers ».</p>
       </details>
       <p>Importe l'export de la discussion du groupe. Elle est analysée sur ce téléphone et n'est envoyée à aucun serveur&nbsp;: les autres joueurs ne reçoivent que ce qu'il faut deviner (expressions, quelques vrais messages, stickers…).</p>
       <a class="privacy" href="confidentialite.html">Comment tes données sont protégées</a>
