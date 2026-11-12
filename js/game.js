@@ -9,7 +9,7 @@ export const SECONDS = [15, 25, 40];
 const GAIN = 2, LOSS = 1;   // points par bonne et par mauvaise réponse (jamais en dessous de zéro)
 const AFTER_FIRST_VOTE = 7000;   // dès le premier vote, il ne reste que ce temps aux autres
 const ALL_VOTED_PAUSE = 600;     // tout le monde a voté : petite pause avant la réponse
-// Roue de la fortune : tirée au sort après chaque manche (une fois sur trois en moyenne). Bonus pour
+// Roue de la fortune : tirée au sort après chaque manche (une fois sur quatre en moyenne). Bonus pour
 // le premier à avoir voté, malus pour le premier du classement. Bonus et malus alternent sur la roue.
 export const WHEEL = [
   { id: 'double', kind: 'bonus' },
@@ -19,8 +19,9 @@ export const WHEEL = [
   { id: 'bouclier', kind: 'bonus' },
   { id: 'melange', kind: 'malus' },
 ];
-export const WHEEL_MS = 6000;
-const WHEEL_CHANCE = 1 / 3;
+export const WHEEL_SPIN_MS = 4000;   // la roue tourne, puis le résultat reste affiché le temps de le lire
+export const WHEEL_MS = 10000;
+const WHEEL_CHANCE = 1 / 4;
 
 // Vrai hasard du navigateur, pas Math.random.
 const randomInt = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;

@@ -3,7 +3,7 @@
 /* global qrcode, NoSleep */
 import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
-import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_MS, MONTAGE_MS } from './game.js';
+import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_SPIN_MS, MONTAGE_MS } from './game.js';
 import { BPM, unlockAudio, playPhonk } from './phonk.js';
 import { openRoom, Client, CODE_LENGTH } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
@@ -642,7 +642,7 @@ function spinWheel() {
     box.innerHTML = wheelMessage();
     if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(seg.kind === 'bonus' ? 60 : [60, 50, 60]);
     if (seg.kind === 'bonus' && !view.wheel.shielded) confetti(stage);
-  }, WHEEL_MS - 2000));
+  }, WHEEL_SPIN_MS));
 }
 
 function confetti(parent) {
