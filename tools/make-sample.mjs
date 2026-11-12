@@ -32,7 +32,7 @@ const PEOPLE = [
     s => (chance(0.13) ? pick(['ahahah', 'ahahahah', 'ahahahahah']) + ' ' : '') + s, s => s + (chance(0.06) ? ' bisous' : ''),
     s => s + (chance(0.05) ? ' avec Léo' : '')] },
   { name: 'Karim B', w: 22, tics: [
-    s => (chance(0.2) ? 'wesh ' : '') + s, s => s + (chance(0.12) ? ' frérot' : ''), s => s + (chance(0.15) ? ' de ouf' : ''),
+    s => (chance(0.2) ? 'attends ' : '') + s, s => s + (chance(0.12) ? ', tranquille' : ''), s => s + (chance(0.15) ? ' de ouf' : ''),
     s => (chance(0.18) ? 'en vrai ' : '') + s, s => s + (chance(0.2) ? ' 🔥' : '')] },
   { name: 'Inès', w: 18, tics: [
     s => (chance(0.15) ? 'carrément, ' : '') + s, s => s + (chance(0.35) ? '...' : ''), s => (chance(0.15) ? 'j\'avoue ' : '') + s,
