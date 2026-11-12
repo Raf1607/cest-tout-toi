@@ -79,6 +79,18 @@ const KICK = new Set([0, 6, 10, 16, 22, 26, 29]);
 const CLAP = new Set([4, 12, 20, 28]);
 const BASS = { 0: 43.65, 6: 43.65, 10: 51.91, 16: 43.65, 22: 43.65, 26: 36.71, 29: 41.2 };
 
+// Rendu hors temps réel (vidéo de présentation, tools/video) : renvoie un AudioBuffer stéréo.
+export async function renderPhonk(seconds, rate = 48000) {
+  const live = ctx;
+  ctx = new OfflineAudioContext(2, Math.ceil(rate * (seconds + 0.1)), rate);
+  try {
+    playPhonk(seconds);
+    return await ctx.startRendering();
+  } finally {
+    ctx = live;
+  }
+}
+
 // Lance la musique pour `seconds` secondes ; renvoie une fonction qui l'arrête.
 export function playPhonk(seconds) {
   if (!ctx) return () => {};

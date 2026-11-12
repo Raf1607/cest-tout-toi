@@ -50,6 +50,7 @@ node tools/test-game.mjs                                       # partie simulée
 node tools/check.mjs "chemin/vers/Discussion WhatsApp avec ….txt"  # tics trouvés dans un export
 node tools/make-sample.mjs                                     # régénère samples/
 node tools/make-og.mjs                                         # régénère l'image de partage et l'icône
+npm install && node tools/video/render.mjs                     # vidéo de présentation 9:16 dans promo/ (non versionnée)
 ```
 
 ## Fichiers

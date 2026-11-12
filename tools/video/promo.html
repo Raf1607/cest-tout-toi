@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<!-- Vidéo de présentation, 1080×1920, style « nuit phonk ». Chaque image est calculée par
+     renderAt(t) (t en secondes), sans animation CSS : le rendu est identique à chaque fois.
+     Aperçu : ouvrir avec ?play dans Chrome. Rendu MP4 : node tools/video/render.mjs -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#16131d; --surface:#221e2c; --surface-2:#2d2839; --line:#3a3448; --ink:#f5f1e8; --muted:#a7a1b5; --accent:#ffcf3f; --accent-ink:#1e1a10; --good:#52d18f; --bad:#ff7a6b; --display:'Bricolage Grotesque', system-ui, sans-serif; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
+  body { font: 600 40px/1.3 system-ui, -apple-system, sans-serif; color: var(--ink); }
+  #stage { position: absolute; inset: 0; background: radial-gradient(circle at 50% 35%, #2a2438 0, var(--bg) 60%); overflow: hidden; }
+  .scene { position: absolute; inset: 0; display: none; }
+  .abs { position: absolute; }
+  .center { left: 50%; top: 50%; }
+  .disp { font-family: var(--display); font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+  .tag { background: var(--accent); color: var(--accent-ink); padding: 0 .14em; border-radius: .18em; display: inline-block; }
+  .bubble { background: var(--ink); color: #1b1824; border-radius: 40px 40px 40px 12px; padding: 26px 34px; font-weight: 700; }
+  .bubble.me { background: #2f6f5b; color: var(--ink); border-radius: 40px 40px 12px 40px; }
+  .bubble small { display: block; font-size: 26px; color: #6b6478; margin-bottom: 4px; }
+  .bubble.me small { color: #bfe3d6; }
+  .phone { position: absolute; width: 640px; height: 1180px; left: 220px; top: 250px; border-radius: 80px; background: #0d0b12; border: 14px solid #2d2839; padding: 70px 40px; display: flex; flex-direction: column; gap: 28px; }
+  .phone::before { content: ''; position: absolute; top: 22px; left: 50%; width: 160px; height: 34px; margin-left: -80px; border-radius: 20px; background: #000; }
+  .btn { border-radius: 26px; padding: 30px; text-align: center; font-weight: 800; font-size: 38px; background: var(--surface-2); border: 2px solid var(--line); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .card { background: var(--surface); border: 2px solid var(--line); border-radius: 30px; padding: 30px; }
+  #cap { position: absolute; left: 70px; right: 70px; top: 1470px; text-align: center; font: 800 66px/1.12 var(--display); letter-spacing: -0.01em; text-shadow: 0 6px 0 rgba(0,0,0,.35); }
+  #cap b { background: var(--accent); color: var(--accent-ink); padding: 0 .12em; border-radius: .15em; text-shadow: none; }
+  #cap small { display: block; margin-top: 18px; font: 700 38px system-ui, sans-serif; color: var(--muted); text-shadow: none; }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .vote { display: flex; align-items: center; justify-content: space-between; }
+  .dots { display: flex; gap: 10px; }
+  .dot { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); opacity: 0; }
+  .row { display: flex; align-items: center; gap: 22px; height: 110px; padding: 0 30px; border-radius: 28px; background: var(--surface); border: 2px solid var(--line); position: absolute; left: 140px; right: 140px; font-size: 44px; font-weight: 800; }
+  .row .pts { margin-left: auto; font-family: var(--display); color: var(--accent); }
+  .row .delta { font-size: 36px; }
+  .emoji { position: absolute; font-size: 110px; line-height: 1; }
+  .confetti { position: absolute; width: 22px; height: 36px; border-radius: 4px; }
+  .mini { position: absolute; width: 170px; height: 300px; border-radius: 34px; background: #0d0b12; border: 8px solid #2d2839; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; font-size: 30px; font-weight: 800; }
+  .mini i { font-style: normal; width: 90px; height: 50px; border-radius: 14px; background: var(--accent); }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- 1. Accroche : le groupe défile, puis « Ton groupe WhatsApp a des secrets » -->
+  <div class="scene" id="s1">
+    <div class="abs" id="s1chat" style="left:80px; right:80px; top:0; display:flex; flex-direction:column; gap:34px"></div>
+    <div class="abs" id="s1dim" style="inset:0; background:var(--bg)"></div>
+    <div class="abs disp" id="s1t" style="left:70px; right:70px; top:560px; font-size:132px; text-align:center"></div>
+  </div>
+
+  <!-- 2. Logo -->
+  <div class="scene" id="s2">
+    <div class="abs disp" id="s2logo" style="left:0; right:0; top:640px; text-align:center; font-size:190px; white-space:nowrap">
+      <span id="s2a">Who is</span><br><span class="tag" id="s2b" style="margin-top:20px">bro</span><span id="s2c"> ?</span>
+    </div>
+  </div>
+
+  <!-- 3. Import de la discussion -->
+  <div class="scene" id="s3">
+    <div class="phone">
+      <div class="disp" style="font-size:64px; text-align:center; margin-top:40px">Who is <span class="tag" style="transform:rotate(-3deg)">bro</span> ?</div>
+      <div class="card" style="margin-top:40px; display:flex; flex-direction:column; gap:24px">
+        <div style="font:800 42px var(--display)">Créer une partie</div>
+        <div class="btn primary" id="s3btn">Importer la discussion</div>
+        <div id="s3prog" style="display:flex; flex-direction:column; gap:16px">
+          <div style="font-size:30px; color:var(--muted)" id="s3txt">Analyse de 12 480 messages…</div>
+          <div style="height:22px; border-radius:11px; background:var(--surface-2); overflow:hidden"><div id="s3bar" style="height:100%; width:0; background:var(--good)"></div></div>
+        </div>
+      </div>
+      <div class="card" id="s3done" style="display:flex; flex-direction:column; gap:12px; font-size:34px">
+        <div>✅ 6 membres</div><div>🗣️ 48 tics et expressions</div><div>🏆 14 records</div><div>🖼️ 320 stickers et photos</div>
+      </div>
+    </div>
+    <div class="abs card" id="s3file" style="left:240px; width:600px; top:0; display:flex; align-items:center; gap:24px; font-size:32px; background:#fff; color:#1b1824; border:0">
+      <div style="font-size:80px">🗂️</div><div>WhatsApp Chat –<br>Les Potes.zip</div>
+    </div>
+  </div>
+
+  <!-- 4. Les potes rejoignent -->
+  <div class="scene" id="s4">
+    <div class="phone" style="gap:30px">
+      <div style="font-size:30px; color:var(--muted); text-align:center; margin-top:30px">Code de la partie</div>
+      <div class="disp" style="font-size:96px; color:var(--accent); text-align:center; letter-spacing:.06em">GZTAPU</div>
+      <div style="align-self:center; width:340px; height:340px; background:#fff; border-radius:26px; padding:20px"><canvas id="s4qr" width="300" height="300" style="width:300px; height:300px"></canvas></div>
+      <div style="font:800 40px var(--display)">Joueurs</div>
+      <div id="s4list" style="display:flex; flex-direction:column; gap:16px; font-size:36px"></div>
+    </div>
+    <div class="mini" id="s4m0" style="left:20px; top:300px"><i></i>Julie</div>
+    <div class="mini" id="s4m1" style="left:890px; top:520px"><i></i>Tom</div>
+    <div class="mini" id="s4m2" style="left:20px; top:900px"><i></i>Inès</div>
+  </div>
+
+  <!-- 5. La question -->
+  <div class="scene" id="s5">
+    <div class="abs" style="left:80px; right:80px; top:150px; display:flex; justify-content:space-between; align-items:center; font-size:36px; color:var(--muted)">
+      <span>Manche 3 / 10</span><span class="disp" id="s5timer" style="font-size:110px; color:var(--ink)">7</span>
+    </div>
+    <div class="abs" style="left:80px; right:80px; top:290px; height:18px; border-radius:9px; background:var(--surface-2); overflow:hidden"><div id="s5bar" style="height:100%; background:var(--accent)"></div></div>
+    <div class="abs bubble" id="s5q" style="left:80px; right:80px; top:400px; font-size:62px; text-align:center">«&nbsp;j'arrive dans 5&nbsp;min, promis&nbsp;»</div>
+    <div class="abs disp" id="s5ask" style="left:0; right:0; top:700px; text-align:center; font-size:96px"><span class="tag">Qui a dit ça ?</span></div>
+    <div class="abs" id="s5votes" style="left:80px; right:80px; top:880px; display:grid; grid-template-columns:1fr 1fr; gap:26px"></div>
+  </div>
+
+  <!-- 6. La réponse et le classement -->
+  <div class="scene" id="s6">
+    <div class="abs" id="s6conf" style="inset:0"></div>
+    <div class="abs" style="left:0; right:0; top:230px; text-align:center; font-size:56px; color:var(--muted)" id="s6pre">C'était…</div>
+    <div class="abs disp" id="s6name" style="left:0; right:0; top:330px; text-align:center; font-size:230px"><span class="tag" style="background:var(--good); color:#10221a">Tom !</span></div>
+    <div class="row" id="s6r0"><span>🥇</span><span>Inès</span><span class="pts">8</span><span class="delta"></span></div>
+    <div class="row" id="s6r1"><span>🥈</span><span>Julie</span><span class="pts">7</span><span class="delta"></span></div>
+    <div class="row" id="s6r2"><span>🥉</span><span>Max</span><span class="pts">6</span><span class="delta"></span></div>
+  </div>
+
+  <!-- 7. Encore plus fun en live -->
+  <div class="scene" id="s7">
+    <div class="abs" id="s7table" style="left:140px; top:330px; width:800px; height:800px; border-radius:50%; background:#3b2a22; border:16px solid #4d372c"></div>
+    <div class="abs" id="s7phones" style="inset:0"></div>
+    <div class="abs" id="s7emo" style="inset:0"></div>
+    <div class="abs disp" id="s7t" style="left:0; right:0; top:560px; text-align:center; font-size:150px; text-shadow:0 10px 0 rgba(0,0,0,.4)">Encore plus fun<br><span class="tag">en live</span></div>
+  </div>
+
+  <!-- 8. Flashs : records, roue, stickers, montage -->
+  <div class="scene" id="s8">
+    <div class="abs" id="s8card" style="left:90px; right:90px; top:420px; height:900px; border-radius:60px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:40px; text-align:center">
+      <div id="s8icon" style="font-size:300px; line-height:1"></div>
+      <div class="disp" id="s8label" style="font-size:96px"></div>
+    </div>
+  </div>
+
+  <!-- 9. Fin -->
+  <div class="scene" id="s9">
+    <div class="abs disp" id="s9logo" style="left:0; right:0; top:520px; text-align:center; font-size:170px; white-space:nowrap">Who is <span class="tag" style="transform:rotate(-3deg)">bro</span> ?</div>
+    <div class="abs" id="s9url" style="left:50%; top:820px; transform:translateX(-50%); font:800 90px var(--display); color:var(--accent); border:6px solid var(--line); border-radius:999px; padding:20px 60px; white-space:nowrap">whoisbro.lol</div>
+    <div class="abs" id="s9sub" style="left:0; right:0; top:1040px; text-align:center; font-size:46px; color:var(--muted)">Gratuit · Sans appli · Dès 2 joueurs</div>
+  </div>
+
+  <div id="cap"></div>
+  <div id="flash"></div>
+</div>
+
+<script>
+const BEAT = 60 / 140, BAR = BEAT * 4;
+const SCENES = [
+  { id: 's1', a: 0, b: 2 * BAR, cap: '' },
+  { id: 's2', a: 2 * BAR, b: 4 * BAR, cap: 'Le quiz sur <b>ton groupe WhatsApp</b>' },
+  { id: 's3', a: 4 * BAR, b: 6 * BAR, cap: '1. Exporte la discussion<small>avec les médias, c\'est encore plus drôle</small>' },
+  { id: 's4', a: 6 * BAR, b: 8 * BAR, cap: '2. Tes potes rejoignent,<br>chacun sur <b>son tel</b>' },
+  { id: 's5', a: 8 * BAR, b: 11 * BAR, cap: '3. Votez. <b>Vite.</b>' },
+  { id: 's6', a: 11 * BAR, b: 13 * BAR, cap: '<b>+2</b> si t\'as bon, −1 si t\'as faux' },
+  { id: 's7', a: 13 * BAR, b: 15 * BAR, cap: 'Tous dans la même pièce' },
+  { id: 's8', a: 15 * BAR, b: 16 * BAR, cap: '' },
+  { id: 's9', a: 16 * BAR, b: 18 * BAR, cap: 'Lance ta partie ce soir' },
+];
+window.DURATION = 18 * BAR;   // ≈ 30,9 s
+
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, d) => clamp((t - a) / d);
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const back = x => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const pop = (t, a, d = 0.25) => back(prog(t, a, d));
+let seed = 1;
+const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+const beatPulse = t => Math.exp(-((t % BEAT) / 0.09));
+
+// ——— Construction ———
+const CHAT = [
+  ['Julie', 'qui ramène les chips ce soir ?'], ['Tom', "j'arrive dans 5 min, promis", 1], ['Inès', 'mdrrr encore ?'],
+  ['Max', "quelqu'un a vu mes clés ??"], ['Sophie', '📸 photo'], ['Julie', 'TROP BIEN 😂😂'], ['Tom', 'bref.', 1],
+  ['Inès', 'vous êtes où ?'], ['Max', 'en vrai je suis chaud'], ['Julie', 'qui prend le dessert'],
+  ['Sophie', '💀💀💀'], ['Tom', 'on vote', 1], ['Inès', "j'avoue..."], ['Max', 'c\'est clair'], ['Julie', 'ahahahah'],
+  ['Tom', 'je suis devant', 1], ['Inès', 'tkt'], ['Sophie', 'non mais ALLÔ'],
+];
+$('s1chat').innerHTML = [...CHAT, ...CHAT].map(([n, m, me]) =>
+  `<div class="bubble${me ? ' me' : ''}" style="font-size:44px; align-self:${me ? 'flex-end' : 'flex-start'}; max-width:80%"><small>${n}</small>${m}</div>`).join('');
+const S1WORDS = ['Ton', 'groupe', 'WhatsApp', 'a', 'des', 'secrets.'];
+$('s1t').innerHTML = S1WORDS.map((w, i) => `<span id="w${i}" style="display:inline-block; margin:0 .12em">${i === 2 ? `<span class="tag">${w}</span>` : w}</span>${i === 1 || i === 2 ? '<br>' : ' '}`).join('');
+
+const PLAYERS = ['Julie', 'Tom', 'Inès'];
+$('s4list').innerHTML = ['Toi (hôte)', ...PLAYERS].map((n, i) => `<div id="s4p${i}" class="card" style="padding:18px 26px; display:flex; justify-content:space-between"><span>${n}</span><span style="color:var(--good)">✓</span></div>`).join('');
+// Faux QR code : un damier fixe, il ne mène nulle part.
+{
+  const c = $('s4qr').getContext('2d'), n = 25, s = 300 / n;
+  seed = 7; c.fillStyle = '#000';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (rnd() > .5) c.fillRect(x * s, y * s, s, s);
+  for (const [x, y] of [[0, 0], [18, 0], [0, 18]]) {
+    c.fillStyle = '#000'; c.fillRect(x * s, y * s, 7 * s, 7 * s);
+    c.fillStyle = '#fff'; c.fillRect((x + 1) * s, (y + 1) * s, 5 * s, 5 * s);
+    c.fillStyle = '#000'; c.fillRect((x + 2) * s, (y + 2) * s, 3 * s, 3 * s);
+  }
+}
+
+const OPTIONS = ['Julie', 'Tom', 'Inès', 'Max'];
+$('s5votes').innerHTML = OPTIONS.map((n, i) => `<div class="btn vote" id="s5o${i}" style="font-size:46px; padding:40px 34px"><span>${n}</span><span class="dots">${'<span class="dot"></span>'.repeat(3)}</span></div>`).join('');
+
+seed = 3;
+$('s6conf').innerHTML = Array.from({ length: 70 }, (_, i) => `<div class="confetti" id="cf${i}" style="background:${['#ffcf3f', '#52d18f', '#ff7a6b', '#7fc8f8', '#f5f1e8'][i % 5]}"></div>`).join('');
+const CONF = Array.from({ length: 70 }, () => ({ x: 540 + (rnd() - .5) * 200, vx: (rnd() - .5) * 1500, vy: -900 - rnd() * 1300, r: rnd() * 720 }));
+
+const PHONES = Array.from({ length: 6 }, (_, i) => {
+  const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+  return { x: 540 + Math.cos(a) * 470 - 85, y: 730 + Math.sin(a) * 470 - 150, rot: a * 180 / Math.PI + 90 };
+});
+$('s7phones').innerHTML = PHONES.map((p, i) => `<div class="mini" id="s7p${i}" style="left:${p.x}px; top:${p.y}px; transform:rotate(${p.rot}deg)"><i></i></div>`).join('');
+const EMO = ['😂', '💀', '🔥', '😭', '🤣', '👀', '😱', '🫠'];
+seed = 11;
+const BURSTS = Array.from({ length: 26 }, (_, i) => ({ e: EMO[i % EMO.length], t: rnd() * 2.6, x: 140 + rnd() * 800, vx: (rnd() - .5) * 300, s: .7 + rnd() * .7 }));
+$('s7emo').innerHTML = BURSTS.map((b, i) => `<div class="emoji" id="em${i}">${b.e}</div>`).join('');
+
+const FLASHES = [
+  { icon: '👻', label: 'Qui est le fantôme du groupe ?', bg: '#2d2839' },
+  { icon: '🎡', label: 'Roue de la fortune : points ×2', bg: '#ffcf3f', ink: '#1e1a10' },
+  { icon: '🐸', label: 'Qui envoie tout le temps ce sticker ?', bg: '#52d18f', ink: '#10221a' },
+  { icon: '📸', label: 'Le montage photo de fin', bg: '#ff7a6b', ink: '#2a0d08' },
+];
+
+// ——— Rendu d'une image ———
+let lastCap = null;
+window.renderAt = function (t) {
+  const sc = SCENES.find(s => t >= s.a && t < s.b) || SCENES[SCENES.length - 1];
+  for (const s of SCENES) $(s.id).style.display = s === sc ? 'block' : 'none';
+  const lt = t - sc.a, dur = sc.b - sc.a;
+
+  // Coupe : flash blanc et secousse au début de chaque scène.
+  const cut = sc.a > 0 ? Math.exp(-lt / 0.08) : 0;
+  $('flash').style.opacity = (0.55 * cut).toFixed(3);
+  seed = Math.floor(t * 60) + 1;
+  const shake = 26 * Math.exp(-lt / 0.12) * (sc.a > 0 ? 1 : 0);
+  document.getElementById('stage').style.transform = `translate(${((rnd() - .5) * shake).toFixed(1)}px, ${((rnd() - .5) * shake).toFixed(1)}px)`;
+
+  // Sous-titre
+  const cap = $('cap');
+  if (lastCap !== sc.cap) { cap.innerHTML = sc.cap; lastCap = sc.cap; }
+  const cp = pop(t, sc.a + 0.08, 0.3);
+  cap.style.opacity = sc.cap ? clamp(cp * 2) : 0;
+  cap.style.transform = `scale(${(0.7 + 0.3 * cp + 0.02 * beatPulse(t)).toFixed(3)})`;
+
+  SCENE_FX[sc.id](lt, dur, t);
+};
+
+const SCENE_FX = {
+  s1(lt) {
+    const drop = BAR;   // la musique entre au bout d'une mesure
+    $('s1chat').style.transform = `translateY(${(-lt * 620 - 200).toFixed(1)}px)`;
+    $('s1dim').style.opacity = lt < drop ? 0 : (0.78).toFixed(2);
+    $('s1chat').style.filter = lt < drop ? 'none' : 'blur(3px)';
+    S1WORDS.forEach((_, i) => {
+      const p = pop(lt, drop + i * BEAT / 2, 0.22);
+      $('w' + i).style.transform = `scale(${p.toFixed(3)}) rotate(${i === 2 ? -3 : 0}deg)`;
+      $('w' + i).style.opacity = lt >= drop + i * BEAT / 2 ? 1 : 0;
+    });
+    $('flash').style.opacity = (0.6 * Math.exp(-Math.max(0, lt - drop) / 0.08) * (lt >= drop ? 1 : 0)).toFixed(3);
+  },
+  s2(lt, dur, t) {
+    $('s2a').style.opacity = lt > 0 ? 1 : 0;
+    const p = pop(lt, BEAT, 0.3);
+    $('s2b').style.transform = `scale(${(p * (1 + 0.04 * beatPulse(t))).toFixed(3)}) rotate(${(-3 - 20 * (1 - clamp(p))).toFixed(1)}deg)`;
+    $('s2c').style.opacity = lt > BEAT * 2 ? 1 : 0;
+    $('s2logo').style.transform = `scale(${(1 + lt * 0.03).toFixed(3)})`;
+  },
+  s3(lt) {
+    const fly = easeOut(prog(lt, 0.15, 0.7));
+    $('s3file').style.top = `${(1700 - fly * 1030).toFixed(0)}px`;
+    $('s3file').style.opacity = lt < 1.0 ? 1 : clamp(1 - (lt - 1.0) / 0.2);
+    $('s3file').style.transform = `scale(${(1 - 0.4 * prog(lt, 0.8, 0.25)).toFixed(3)}) rotate(${(-8 + 8 * fly).toFixed(1)}deg)`;
+    $('s3btn').style.transform = `scale(${(1 + 0.08 * Math.exp(-Math.max(0, lt - 0.9) / 0.1) * (lt > 0.9 ? 1 : 0)).toFixed(3)})`;
+    const an = prog(lt, 1.0, 1.4);
+    $('s3prog').style.opacity = lt > 1.0 ? 1 : 0;
+    $('s3bar').style.width = `${(easeOut(an) * 100).toFixed(1)}%`;
+    $('s3txt').textContent = an < 1 ? 'Analyse de 12 480 messages…' : 'Analyse terminée';
+    [...$('s3done').children].forEach((el, i) => { const p = pop(lt, 2.45 + i * 0.12, 0.2); el.style.transform = `scale(${p.toFixed(3)})`; el.style.opacity = lt > 2.45 + i * 0.12 ? 1 : 0; });
+    $('s3done').style.opacity = lt > 2.4 ? 1 : 0;
+  },
+  s4(lt) {
+    for (let i = 0; i < 3; i++) {
+      const at = 0.35 + i * BEAT * 1.5, p = easeOut(prog(lt, at, 0.35));
+      const m = $('s4m' + i), fromLeft = i !== 1;
+      m.style.transform = `translateX(${((1 - p) * (fromLeft ? -400 : 400)).toFixed(0)}px) rotate(${fromLeft ? -10 : 10}deg)`;
+      const q = pop(lt, at + 0.3, 0.25);
+      const row = $('s4p' + (i + 1));
+      row.style.opacity = lt > at + 0.3 ? 1 : 0;
+      row.style.transform = `scale(${q.toFixed(3)})`;
+    }
+    $('s4p0').style.opacity = 1;
+  },
+  s5(lt, dur, t) {
+    const left = Math.max(0, 7 - lt * 1.45);
+    $('s5timer').textContent = Math.ceil(left);
+    $('s5timer').style.color = left < 3 ? 'var(--bad)' : 'var(--ink)';
+    $('s5timer').style.transform = `scale(${(1 + 0.12 * beatPulse(t)).toFixed(3)})`;
+    $('s5bar').style.width = `${(left / 7 * 100).toFixed(1)}%`;
+    const q = pop(lt, 0, 0.3);
+    $('s5q').style.transform = `scale(${q.toFixed(3)})`;
+    $('s5ask').style.transform = `scale(${pop(lt, BEAT, 0.3).toFixed(3)}) rotate(-2deg)`;
+    $('s5ask').style.opacity = lt > BEAT ? 1 : 0;
+    // Les votes tombent : [instant, bouton]
+    const VOTES = [[1.3, 1], [1.75, 0], [2.2, 1], [2.65, 2], [3.1, 1], [3.5, 1]];
+    const count = [0, 0, 0, 0];
+    for (const [at, o] of VOTES) if (lt > at) count[o]++;
+    OPTIONS.forEach((_, i) => {
+      const b = $('s5o' + i);
+      b.style.opacity = lt > BEAT * 2 + i * 0.08 ? 1 : 0;
+      b.style.transform = `translateY(${((1 - easeOut(prog(lt, BEAT * 2 + i * 0.08, 0.25))) * 80).toFixed(0)}px)`;
+      const mine = i === 1 && lt > 1.3;
+      b.classList.toggle('primary', mine);
+      [...b.querySelectorAll('.dot')].forEach((d, k) => { d.style.opacity = k < Math.min(3, count[i]) ? 1 : 0; d.style.background = mine ? 'var(--accent-ink)' : 'var(--accent)'; });
+    });
+  },
+  s6(lt) {
+    $('s6pre').style.opacity = lt < 0.05 ? 0 : 1;
+    const p = pop(lt, BEAT, 0.3);
+    $('s6name').style.transform = `scale(${p.toFixed(3)}) rotate(${(-4 * p).toFixed(1)}deg)`;
+    $('s6name').style.opacity = lt > BEAT ? 1 : 0;
+    const ct = Math.max(0, lt - BEAT);
+    CONF.forEach((c, i) => {
+      const el = $('cf' + i);
+      el.style.opacity = lt > BEAT ? 1 : 0;
+      el.style.transform = `translate(${(c.x + c.vx * ct).toFixed(0)}px, ${(560 + c.vy * ct + 1400 * ct * ct).toFixed(0)}px) rotate(${(c.r + ct * 600).toFixed(0)}deg)`;
+    });
+    // Classement : Tom (bonne réponse, +2) passe de 3e à 1er ; Inès et Julie se sont trompées (−1).
+    const swap = easeOut(prog(lt, 1.9, 0.6));
+    const rows = [
+      { el: 's6r0', from: 0, to: 1, name: 'Inès', pts: [8, 7], d: '−1' },
+      { el: 's6r1', from: 1, to: 2, name: 'Julie', pts: [7, 6], d: '−1' },
+      { el: 's6r2', from: 2, to: 0, name: 'Tom', pts: [7, 9], d: '+2' },
+    ];
+    rows.forEach(r => {
+      const el = $(r.el);
+      const pos = r.from + (r.to - r.from) * swap;
+      el.style.top = `${(880 + pos * 135).toFixed(0)}px`;
+      el.style.opacity = lt > 1.4 ? 1 : 0;
+      el.children[1].textContent = r.name;
+      el.children[0].textContent = ['🥇', '🥈', '🥉'][Math.round(pos)];
+      el.children[2].textContent = swap > 0.5 ? r.pts[1] : r.pts[0];
+      el.children[3].textContent = swap > 0.3 ? r.d : '';
+      el.children[3].style.color = r.d.startsWith('+') ? 'var(--good)' : 'var(--bad)';
+      el.style.borderColor = r.name === 'Tom' && swap > 0.3 ? 'var(--good)' : 'var(--line)';
+      el.style.zIndex = r.name === 'Tom' ? 2 : 1;
+    });
+  },
+  s7(lt, dur, t) {
+    $('s7table').style.transform = `scale(${(0.9 + 0.1 * easeOut(prog(lt, 0, 0.4))).toFixed(3)})`;
+    PHONES.forEach((p, i) => {
+      const k = easeOut(prog(lt, i * 0.07, 0.3));
+      $('s7p' + i).style.opacity = k;
+      $('s7p' + i).style.transform = `rotate(${p.rot}deg) translateY(${((1 - k) * -200).toFixed(0)}px) scale(${(1 + 0.05 * beatPulse(t + i * 0.1)).toFixed(3)})`;
+    });
+    BURSTS.forEach((b, i) => {
+      const k = lt - 0.3 - b.t, el = $('em' + i);
+      if (k < 0 || k > 1.6) { el.style.opacity = 0; return; }
+      el.style.opacity = clamp(1.6 - k);
+      el.style.transform = `translate(${(b.x + b.vx * k).toFixed(0)}px, ${(1150 - 1100 * k + 300 * k * k).toFixed(0)}px) scale(${(b.s * pop(k, 0, 0.2)).toFixed(3)})`;
+    });
+    const p = pop(lt, BEAT, 0.3);
+    $('s7t').style.transform = `scale(${(p * (1 + 0.03 * beatPulse(t))).toFixed(3)}) rotate(-2deg)`;
+    $('s7t').style.opacity = lt > BEAT ? 1 : 0;
+  },
+  s8(lt, dur, t) {
+    const i = Math.min(FLASHES.length - 1, Math.floor(lt / BEAT)), f = FLASHES[i];
+    const card = $('s8card');
+    card.style.background = f.bg;
+    card.style.color = f.ink || 'var(--ink)';
+    $('s8icon').textContent = f.icon;
+    $('s8label').textContent = f.label;
+    const k = lt - i * BEAT;
+    card.style.transform = `scale(${pop(k, 0, 0.18).toFixed(3)}) rotate(${(i % 2 ? 3 : -3)}deg)`;
+    $('flash').style.opacity = (0.4 * Math.exp(-k / 0.06)).toFixed(3);
+  },
+  s9(lt, dur, t) {
+    const p = pop(lt, 0, 0.35);
+    $('s9logo').style.transform = `scale(${(p * (1 + 0.03 * beatPulse(t))).toFixed(3)})`;
+    const u = pop(lt, BEAT, 0.3);
+    $('s9url').style.transform = `translateX(-50%) scale(${u.toFixed(3)})`;
+    $('s9url').style.opacity = lt > BEAT ? 1 : 0;
+    $('s9sub').style.opacity = clamp((lt - BEAT * 2) / 0.3);
+    document.getElementById('stage').style.opacity = clamp((dur - lt) / 0.6);
+  },
+};
+
+// Aperçu en direct : promo.html?play
+if (location.search.includes('play')) {
+  const t0 = performance.now();
+  const loop = () => { const t = (performance.now() - t0) / 1000 % window.DURATION; renderAt(t); requestAnimationFrame(loop); };
+  document.fonts.ready.then(loop);
+} else renderAt(0);
+</script>
+</body>
+</html>
