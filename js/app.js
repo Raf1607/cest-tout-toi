@@ -94,7 +94,7 @@ function mediaArrived(id) {
 // ——— Hôte ———
 
 async function host(getFile) {
-  setUi({ screen: 'busy', busy: T('reading'), error: '' });
+  setUi({ screen: 'busy', busy: T('reading'), error: '', notice: '' });
   try {
     const file = await getFile();
     const { text, files, entries } = await readExport(file);
@@ -209,7 +209,7 @@ function join(code, name = store.get('ctt-name') || '') {
   if (!name) return setUi({ screen: 'home', error: T('nameNeeded') });
   store.set('ctt-name', name);
   if (params.get('p') !== code) history.replaceState(null, '', `?p=${code}`);
-  setUi({ screen: 'busy', busy: T('connecting', code), error: '' });
+  setUi({ screen: 'busy', busy: T('connecting', code), error: '', notice: '' });
   client?.close();
   const inbox = new MediaInbox((id, url) => { mediaCache.set(id, url); mediaArrived(id); });
   client = new Client(code, myId, name, {
@@ -239,6 +239,103 @@ function join(code, name = store.get('ctt-name') || '') {
       } else setUi({ status });
     },
   });
+}
+
+// ——— Scanner le QR code de l'hôte ———
+// La caméra ne sert qu'à lire le code, sur le téléphone : aucune image n'est envoyée ni gardée.
+// Lecteur natif du navigateur s'il existe (Android), sinon la bibliothèque jsQR, chargée à la demande.
+const JSQR = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+let scanner = null;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if ([...document.scripts].some(s => s.src === src)) return resolve();
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.append(s);
+  });
+}
+
+async function qrReader() {
+  if ('BarcodeDetector' in window) {
+    try {
+      const d = new BarcodeDetector({ formats: ['qr_code'] });
+      return async v => (await d.detect(v))[0]?.rawValue || null;
+    } catch { /* format non pris en charge : jsQR */ }
+  }
+  await loadScript(JSQR);
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+  return async v => {
+    const vw = v.videoWidth || v.width, vh = v.videoHeight || v.height;
+    if (!vw) return null;
+    const w = 480, h = Math.round((vh * w) / vw);
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(v, 0, 0, w, h);
+    return window.jsQR?.(ctx.getImageData(0, 0, w, h).data, w, h)?.data || null;
+  };
+}
+
+// Le QR code du jeu contient le lien d'invitation (…?p=CODE) ; on accepte aussi un code seul.
+function codeFrom(text) {
+  try {
+    const p = new URL(text).searchParams.get('p');
+    if (p) return p.toUpperCase().replace(/[^A-Z]/g, '').slice(0, CODE_LENGTH);
+  } catch { /* pas une adresse */ }
+  const t = String(text).toUpperCase().replace(/[^A-Z]/g, '');
+  return t.length === CODE_LENGTH ? t : null;
+}
+
+function stopScan() {
+  if (!scanner) return;
+  scanner.stopped = true;
+  scanner.stream?.getTracks().forEach(t => t.stop());
+  scanner = null;
+}
+
+async function startScan() {
+  if (!navigator.mediaDevices?.getUserMedia) return setUi({ screen: 'home', error: T('noCamera') });
+  stopScan();
+  setUi({ screen: 'scan', error: '', notice: '' });
+  const me = scanner = { stopped: false, stream: null };
+  try {
+    me.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    if (me.stopped) return me.stream.getTracks().forEach(t => t.stop());
+    const video = $app.querySelector('.scan video');
+    video.srcObject = me.stream;
+    await video.play();
+    const read = await qrReader();
+    const loop = async () => {
+      if (me.stopped) return;
+      const code = codeFrom(await read(video).catch(() => null) || '');
+      if (code) return scanned(code);
+      setTimeout(loop, 150);
+    };
+    loop();
+  } catch {
+    if (me.stopped) return;
+    stopScan();
+    setUi({ screen: 'home', error: T('cameraDenied') });
+  }
+}
+
+function scanned(code) {
+  stopScan();
+  navigator.vibrate?.(40);
+  params.set('p', code);
+  history.replaceState(null, '', `?p=${code}`);
+  const name = store.get('ctt-name');
+  if (name) return join(code, name);
+  setUi({ screen: 'home', error: '', notice: T('scanned', code) });
+  $app.querySelector('input[name=name]')?.focus();
+}
+
+function scanScreen() {
+  return `
+    <div class="scan">
+      <div class="scan-view"><video playsinline muted></video><i class="scan-frame"></i></div>
+      <p>${T('scanHint')}</p>
+      <button class="big" data-act="scan-cancel">${T('cancel')}</button>
+    </div>`;
 }
 
 // ——— Affichage ———
@@ -271,6 +368,7 @@ function render() {
   boardTimers = [];
   let html;
   if (ui.screen === 'home') html = homeScreen();
+  else if (ui.screen === 'scan') html = scanScreen();
   else if (ui.screen === 'busy') html = `<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
@@ -295,6 +393,7 @@ function homeScreen() {
       ${gamesPlayed ? `<p class="counter">${T('gamesPlayed', gamesPlayed)}</p>` : ''}
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
+    ${ui.notice ? `<p class="notice">${esc(ui.notice)}</p>` : ''}
     ${lanUrl ? `
     <section class="card invite">
       <div class="qr">${qrSvg(lanUrl)}</div>
@@ -311,6 +410,7 @@ function homeScreen() {
         <input name="name" value="${esc(store.get('ctt-name') || '')}" maxlength="24" placeholder="${T('yourName')}" autocomplete="given-name" aria-label="${T('yourName')}">
         <button class="primary" type="submit">${T('join')}</button>
       </form>
+      <button class="scan-btn" data-act="scan">${T('scanQr')}</button>
     </section>
     <section class="card">
       <h2>${T('createTitle')}</h2>
@@ -741,6 +841,8 @@ $app.addEventListener('click', async e => {
     const name = T('demoFile');
     host(() => fetch('samples/' + encodeURIComponent(name)).then(r => r.blob()).then(b => new File([b], name, { type: 'application/zip' })));
   }
+  else if (act === 'scan') startScan();
+  else if (act === 'scan-cancel') { stopScan(); setUi({ screen: 'home' }); }
   else if (act === 'lang') { setLang(lang === 'fr' ? 'en' : 'fr'); saveLang(lang); render(); }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
   else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });

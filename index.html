@@ -103,6 +103,12 @@
   details { font-size: 15px; color: var(--muted); }
   details summary { cursor: pointer; color: var(--ink); }
   details p { margin-top: 8px; }
+  .notice { background: rgba(82, 209, 143, .12); border: 1px solid var(--good); color: var(--ink); padding: 12px 14px; border-radius: 12px; }
+  .scan-btn { width: 100%; }
+  .scan { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; text-align: center; color: var(--muted); }
+  .scan-view { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; aspect-ratio: 3 / 4; }
+  .scan-view video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scan-frame { position: absolute; left: 50%; top: 50%; width: 64%; aspect-ratio: 1; transform: translate(-50%, -50%); border: 4px solid var(--accent); border-radius: 22px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .35); }
   .error { background: rgba(255, 122, 107, .12); border: 1px solid var(--bad); color: #ffd2cc; padding: 12px 14px; border-radius: 12px; }
 
   .busy { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: var(--muted); }
@@ -337,16 +343,16 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611121148",
-  "./js/tics.js": "./js/tics.js?v=202611121148",
-  "./js/game.js": "./js/game.js?v=202611121148",
-  "./js/net.js": "./js/net.js?v=202611121148",
-  "./js/media.js": "./js/media.js?v=202611121148",
-  "./js/records.js": "./js/records.js?v=202611121148",
-  "./js/i18n.js": "./js/i18n.js?v=202611121148",
-  "./js/phonk.js": "./js/phonk.js?v=202611121148"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611121205",
+  "./js/tics.js": "./js/tics.js?v=202611121205",
+  "./js/game.js": "./js/game.js?v=202611121205",
+  "./js/net.js": "./js/net.js?v=202611121205",
+  "./js/media.js": "./js/media.js?v=202611121205",
+  "./js/records.js": "./js/records.js?v=202611121205",
+  "./js/i18n.js": "./js/i18n.js?v=202611121205",
+  "./js/phonk.js": "./js/phonk.js?v=202611121205"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611121148"></script>
+<script type="module" src="js/app.js?v=202611121205"></script>
 </body>
 </html>
