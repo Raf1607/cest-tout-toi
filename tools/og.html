@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!-- Image d'aperçu quand on partage le lien (WhatsApp, iMessage, réseaux).
+     Régénérer : node tools/make-og.mjs -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background: radial-gradient(circle at 85% 15%, #2d2839 0, #16131d 55%);
+    color: #f5f1e8; font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    display: flex; align-items: center; padding: 0 80px; gap: 60px;
+  }
+  .left { flex: 1; }
+  h1 { font-size: 118px; line-height: 1; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; }
+  h1 span { background: #ffcf3f; color: #1e1a10; padding: 0 .14em; border-radius: .18em; display: inline-block; transform: rotate(-3deg); }
+  p { margin-top: 30px; font: 600 34px/1.3 system-ui, -apple-system, sans-serif; color: #a7a1b5; }
+  p b { color: #f5f1e8; }
+  .url { margin-top: 34px; display: inline-block; font: 700 26px system-ui, sans-serif; color: #ffcf3f; border: 2px solid #3a3448; border-radius: 99px; padding: 8px 22px; }
+  .chat { width: 330px; display: flex; flex-direction: column; gap: 18px; }
+  .bubble { background: #f5f1e8; color: #1b1824; font: 700 30px/1.25 system-ui, sans-serif; padding: 18px 24px; border-radius: 26px 26px 26px 8px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .bubble:nth-child(2) { align-self: flex-end; border-radius: 26px 26px 8px 26px; background: #ffcf3f; color: #1e1a10; transform: rotate(2deg); }
+  .bubble:nth-child(3) { align-self: flex-start; font-size: 54px; padding: 10px 22px; transform: rotate(-3deg); }
+  .votes { display: flex; gap: 10px; flex-wrap: wrap; }
+  .votes span { font: 700 22px system-ui, sans-serif; background: #2d2839; border: 1px solid #3a3448; border-radius: 12px; padding: 10px 16px; }
+  .votes span.on { background: #52d18f; color: #10221a; border-color: #52d18f; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <h1>Who is <span>bro</span>&nbsp;?</h1>
+    <p><b>Qui a dit ça&nbsp;? Qui parle le plus&nbsp;?</b><br>Le quiz entre potes sur votre groupe WhatsApp.</p>
+    <div class="url">whoisbro.lol</div>
+  </div>
+  <div class="chat">
+    <div class="bubble">« wesh c'est chaud mdrrr »</div>
+    <div class="bubble">Qui a dit ça&nbsp;?</div>
+    <div class="bubble">💀🔥</div>
+    <div class="votes"><span>Julie</span><span class="on">Karim ✓</span><span>Inès</span></div>
+  </div>
+</body>
+</html>

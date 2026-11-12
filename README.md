@@ -49,6 +49,7 @@ Outils :
 node tools/test-game.mjs                                       # partie simulée
 node tools/check.mjs "chemin/vers/Discussion WhatsApp avec ….txt"  # tics trouvés dans un export
 node tools/make-sample.mjs                                     # régénère samples/
+node tools/make-og.mjs                                         # régénère l'image de partage et l'icône
 ```
 
 ## Fichiers
@@ -56,6 +57,7 @@ node tools/make-sample.mjs                                     # régénère sam
 | | |
 |---|---|
 | `index.html` | page et styles |
+| `og.png`, `apple-touch-icon.png` | aperçu quand on partage le lien, icône d'écran d'accueil (`node tools/make-og.mjs`, depuis `tools/og.html`) |
 | `CNAME` | domaine du site (whoisbro.lol), lu par GitHub Pages |
 | `confidentialite.html` | page « protection des données », liée depuis l'accueil |
 | `js/whatsapp.js` | lecture des exports iPhone et Android |
