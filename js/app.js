@@ -327,7 +327,7 @@ function homeScreen() {
       <button class="link" data-act="demo">${T('demo')}</button>
     </section>
     <footer class="foot">
-      ${lang === 'fr' ? `<a href="video/who-is-bro.mp4">${T('video')}</a>` : ''}
+      <a href="${T('videoFile')}">${T('video')}</a>
       <a href="${T('aboutPage')}">${T('about')}</a>
       <button class="link" data-act="lang" lang="${lang === 'fr' ? 'en' : 'fr'}">${T('otherLang')}</button>
     </footer>`;

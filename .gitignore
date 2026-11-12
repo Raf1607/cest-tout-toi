@@ -9,6 +9,7 @@
 node_modules/
 *.mp4
 !video/who-is-bro.mp4
+!video/who-is-bro-en.mp4
 promo/
 *.heic
 *.HEIC

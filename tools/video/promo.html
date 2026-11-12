@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- Vidéo de présentation, 1080×1920, style « nuit phonk ». Chaque image est calculée par
      renderAt(t) (t en secondes), sans animation CSS : le rendu est identique à chaque fois.
-     Aperçu : ouvrir avec ?play dans Chrome. Rendu MP4 : node tools/video/render.mjs -->
+     Aperçu : ouvrir avec ?play dans Chrome (?play&lang=en pour l'anglais). Rendu MP4 : node tools/video/render.mjs [--lang en] -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -64,15 +64,15 @@
     <div class="phone">
       <div class="disp" style="font-size:64px; text-align:center; margin-top:40px">Who is <span class="tag" style="transform:rotate(-3deg)">bro</span> ?</div>
       <div class="card" style="margin-top:40px; display:flex; flex-direction:column; gap:24px">
-        <div style="font:800 42px var(--display)">Créer une partie</div>
-        <div class="btn primary" id="s3btn">Importer la discussion</div>
+        <div style="font:800 42px var(--display)" id="s3h"></div>
+        <div class="btn primary" id="s3btn"></div>
         <div id="s3prog" style="display:flex; flex-direction:column; gap:16px">
-          <div style="font-size:30px; color:var(--muted)" id="s3txt">Analyse de 12 480 messages…</div>
+          <div style="font-size:30px; color:var(--muted)" id="s3txt"></div>
           <div style="height:22px; border-radius:11px; background:var(--surface-2); overflow:hidden"><div id="s3bar" style="height:100%; width:0; background:var(--good)"></div></div>
         </div>
       </div>
       <div class="card" id="s3done" style="display:flex; flex-direction:column; gap:12px; font-size:34px">
-        <div>✅ 6 membres</div><div>🗣️ 48 expressions cultes</div><div>🏆 14 records</div><div>🖼️ 320 stickers et photos</div>
+        
       </div>
     </div>
     <div class="abs card" id="s3file" style="left:240px; width:600px; top:0; display:flex; align-items:center; gap:24px; font-size:32px; background:#fff; color:#1b1824; border:0">
@@ -83,33 +83,33 @@
   <!-- 4. Les potes rejoignent -->
   <div class="scene" id="s4">
     <div class="phone" style="gap:30px">
-      <div style="font-size:30px; color:var(--muted); text-align:center; margin-top:30px">Code de la partie</div>
+      <div style="font-size:30px; color:var(--muted); text-align:center; margin-top:30px" id="s4l"></div>
       <div class="disp" style="font-size:96px; color:var(--accent); text-align:center; letter-spacing:.06em">GZTAPU</div>
       <div style="align-self:center; width:340px; height:340px; background:#fff; border-radius:26px; padding:20px"><canvas id="s4qr" width="300" height="300" style="width:300px; height:300px"></canvas></div>
-      <div style="font:800 40px var(--display)">Joueurs</div>
+      <div style="font:800 40px var(--display)" id="s4pl"></div>
       <div id="s4list" style="display:flex; flex-direction:column; gap:16px; font-size:36px"></div>
     </div>
-    <div class="mini" id="s4m0" style="left:20px; top:300px"><i></i>Julie</div>
-    <div class="mini" id="s4m1" style="left:890px; top:520px"><i></i>Tom</div>
-    <div class="mini" id="s4m2" style="left:20px; top:900px"><i></i>Inès</div>
+    <div class="mini" id="s4m0" style="left:20px; top:300px"><i></i></div>
+    <div class="mini" id="s4m1" style="left:890px; top:520px"><i></i></div>
+    <div class="mini" id="s4m2" style="left:20px; top:900px"><i></i></div>
   </div>
 
   <!-- 5. La question -->
   <div class="scene" id="s5">
     <div class="abs" style="left:80px; right:80px; top:150px; display:flex; justify-content:space-between; align-items:center; font-size:36px; color:var(--muted)">
-      <span>Manche 3 / 10</span><span class="disp" id="s5timer" style="font-size:110px; color:var(--ink)">7</span>
+      <span id="s5round"></span><span class="disp" id="s5timer" style="font-size:110px; color:var(--ink)">7</span>
     </div>
     <div class="abs" style="left:80px; right:80px; top:290px; height:18px; border-radius:9px; background:var(--surface-2); overflow:hidden"><div id="s5bar" style="height:100%; background:var(--accent)"></div></div>
-    <div class="abs bubble" id="s5q" style="left:80px; right:80px; top:400px; font-size:62px; text-align:center">«&nbsp;j'arrive dans 5&nbsp;min, promis&nbsp;»</div>
-    <div class="abs disp" id="s5ask" style="left:0; right:0; top:700px; text-align:center; font-size:96px"><span class="tag">Qui a dit ça ?</span></div>
+    <div class="abs bubble" id="s5q" style="left:80px; right:80px; top:400px; font-size:62px; text-align:center"></div>
+    <div class="abs disp" id="s5ask" style="left:0; right:0; top:700px; text-align:center; font-size:96px"><span class="tag" id="s5askt"></span></div>
     <div class="abs" id="s5votes" style="left:80px; right:80px; top:880px; display:grid; grid-template-columns:1fr 1fr; gap:26px"></div>
   </div>
 
   <!-- 6. La réponse et le classement -->
   <div class="scene" id="s6">
     <div class="abs" id="s6conf" style="inset:0"></div>
-    <div class="abs" style="left:0; right:0; top:230px; text-align:center; font-size:56px; color:var(--muted)" id="s6pre">C'était…</div>
-    <div class="abs disp" id="s6name" style="left:0; right:0; top:330px; text-align:center; font-size:230px"><span class="tag" style="background:var(--good); color:#10221a">Tom !</span></div>
+    <div class="abs" style="left:0; right:0; top:230px; text-align:center; font-size:56px; color:var(--muted)" id="s6pre"></div>
+    <div class="abs disp" id="s6name" style="left:0; right:0; top:330px; text-align:center; font-size:230px"><span class="tag" style="background:var(--good); color:#10221a" id="s6namet"></span></div>
     <div class="row" id="s6r0"><span>🥇</span><span>Inès</span><span class="pts">8</span><span class="delta"></span></div>
     <div class="row" id="s6r1"><span>🥈</span><span>Julie</span><span class="pts">7</span><span class="delta"></span></div>
     <div class="row" id="s6r2"><span>🥉</span><span>Max</span><span class="pts">6</span><span class="delta"></span></div>
@@ -120,7 +120,7 @@
     <div class="abs" id="s7table" style="left:140px; top:330px; width:800px; height:800px; border-radius:50%; background:#3b2a22; border:16px solid #4d372c"></div>
     <div class="abs" id="s7phones" style="inset:0"></div>
     <div class="abs" id="s7emo" style="inset:0"></div>
-    <div class="abs disp" id="s7t" style="left:0; right:0; top:560px; text-align:center; font-size:150px; text-shadow:0 10px 0 rgba(0,0,0,.4)">Encore plus fun<br><span class="tag">en live</span></div>
+    <div class="abs disp" id="s7t" style="left:0; right:0; top:560px; text-align:center; font-size:150px; text-shadow:0 10px 0 rgba(0,0,0,.4)"></div>
   </div>
 
   <!-- 8. Flashs : records, roue, stickers, montage -->
@@ -135,9 +135,8 @@
   <div class="scene" id="s9">
     <div class="abs disp" id="s9logo" style="left:0; right:0; top:520px; text-align:center; font-size:170px; white-space:nowrap">Who is <span class="tag" style="transform:rotate(-3deg)">bro</span> ?</div>
     <div class="abs" id="s9url" style="left:50%; top:820px; transform:translateX(-50%); font:800 90px var(--display); color:var(--accent); border:6px solid var(--line); border-radius:999px; padding:20px 60px; white-space:nowrap">whoisbro.lol</div>
-    <div class="abs" id="s9sub" style="left:0; right:0; top:1040px; text-align:center; font-size:46px; color:var(--muted)">Gratuit · Sans appli · Dès 2 joueurs</div>
+    <div class="abs" id="s9sub" style="left:0; right:0; top:1040px; text-align:center; font-size:46px; color:var(--muted)"></div>
     <div class="abs" id="s9stamp" style="left:50%; top:1190px; width:640px; margin-left:-320px; padding:22px 30px; border:10px double #52d18f; border-radius:26px; color:#52d18f; text-align:center; font:800 60px/1.05 var(--display); letter-spacing:.04em; text-transform:uppercase">
-      🔒 Données<br>non partagées<div style="font:700 30px system-ui, sans-serif; letter-spacing:0; text-transform:none; margin-top:12px">ta discussion reste sur ton tel</div>
     </div>
   </div>
 
@@ -146,17 +145,66 @@
 </div>
 
 <script>
+// Textes de la vidéo : français par défaut, anglais avec ?lang=en.
+const LANG = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'fr';
+const TX = {
+  fr: {
+    caps: { s2: 'Le quiz sur <b>ton groupe WhatsApp</b>', s3: '1. Exporte la discussion<small>avec les médias, c\'est encore plus drôle</small>',
+      s4: '2. Tes potes rejoignent,<br>chacun sur <b>son tel</b>', s5: '3. Votez. <b>Vite.</b>', s6: '<b>+2</b> si t\'as bon, −1 si t\'as faux',
+      s7: 'Tous dans la même pièce', s9: 'Lance ta partie ce soir' },
+    chat: [
+      ['Julie', 'qui ramène les chips ce soir ?'], ['Tom', "j'arrive dans 5 min, promis", 1], ['Inès', 'mdrrr encore ?'],
+      ['Max', "quelqu'un a vu mes clés ??"], ['Sophie', '📸 photo'], ['Julie', 'TROP BIEN 😂😂'], ['Tom', 'bref.', 1],
+      ['Inès', 'vous êtes où ?'], ['Max', 'en vrai je suis chaud'], ['Julie', 'qui prend le dessert'],
+      ['Sophie', '💀💀💀'], ['Tom', 'on vote', 1], ['Inès', "j'avoue..."], ['Max', 'c\'est clair'], ['Julie', 'ahahahah'],
+      ['Tom', 'je suis devant', 1], ['Inès', 'tkt'], ['Sophie', 'non mais ALLÔ'],
+    ],
+    words: ['Ton', 'groupe', 'WhatsApp', 'a', 'des', 'secrets.'], tagWord: 2, breaks: [1, 2],
+    host: 'Créer une partie', import: 'Importer la discussion', analysing: 'Analyse de 12 480 messages…', analysed: 'Analyse terminée',
+    found: ['✅ 6 membres', '🗣️ 48 expressions cultes', '🏆 14 records', '🖼️ 320 stickers et photos'],
+    code: 'Code de la partie', playersTitle: 'Joueurs', you: 'Toi (hôte)', players: ['Julie', 'Tom', 'Inès'], options: ['Julie', 'Tom', 'Inès', 'Max'],
+    quote: '«&nbsp;j\'arrive dans 5&nbsp;min, promis&nbsp;»', ask: 'Qui a dit ça ?', round: 'Manche 3 / 10',
+    pre: 'C\'était…', winner: 'Tom !', rows: ['Inès', 'Julie', 'Tom'],
+    live: 'Encore plus fun<br><span class="tag">en live</span>',
+    flashes: ['Qui est le fantôme du groupe ?', 'Roue de la fortune : points ×2', 'Qui envoie tout le temps ce sticker ?', 'Le montage photo de fin'],
+    sub: 'Gratuit · Sans appli · Dès 2 joueurs',
+    stamp: '🔒 Données<br>non partagées<div style="font:700 30px system-ui, sans-serif; letter-spacing:0; text-transform:none; margin-top:12px">ta discussion reste sur ton tel</div>',
+  },
+  en: {
+    caps: { s2: 'The quiz about <b>your WhatsApp group</b>', s3: '1. Export the chat<small>with media, it\'s even funnier</small>',
+      s4: '2. Your friends join,<br>each on <b>their phone</b>', s5: '3. Vote. <b>Fast.</b>', s6: '<b>+2</b> if you\'re right, −1 if you\'re wrong',
+      s7: 'Everyone in the same room', s9: 'Start a game tonight' },
+    chat: [
+      ['Emma', 'who is bringing snacks tonight?'], ['Tom', 'be there in 5 min, promise', 1], ['Priya', 'lmaooo again?'],
+      ['Max', 'has anyone seen my keys??'], ['Sophie', '📸 photo'], ['Emma', 'LOVE THAT 😂😂'], ['Tom', 'anyway.', 1],
+      ['Priya', 'where are you guys?'], ['Max', 'honestly i am up for it'], ['Emma', 'who is getting dessert'],
+      ['Sophie', '💀💀💀'], ['Tom', 'lets vote', 1], ['Priya', 'ngl...'], ['Max', 'for sure'], ['Emma', 'hahahaha'],
+      ['Tom', 'i am outside', 1], ['Priya', 'no cap'], ['Sophie', 'NO WAY'],
+    ],
+    words: ['Your', 'WhatsApp', 'group', 'has', 'secrets.'], tagWord: 1, breaks: [0, 1],
+    host: 'Host a game', import: 'Import the chat', analysing: 'Analyzing 12,480 messages…', analysed: 'Analysis done',
+    found: ['✅ 6 members', '🗣️ 48 iconic phrases', '🏆 14 records', '🖼️ 320 stickers and photos'],
+    code: 'Game code', playersTitle: 'Players', you: 'You (host)', players: ['Emma', 'Tom', 'Priya'], options: ['Emma', 'Tom', 'Priya', 'Max'],
+    quote: '“be there in 5&nbsp;min, promise”', ask: 'Who said that?', round: 'Round 3 / 10',
+    pre: 'It was…', winner: 'Tom!', rows: ['Priya', 'Emma', 'Tom'],
+    live: 'Even more fun<br><span class="tag">in person</span>',
+    flashes: ['Who is the ghost of the group?', 'Wheel of fortune: points ×2', 'Who always sends this sticker?', 'The photo montage at the end'],
+    sub: 'Free · No app · 2+ players',
+    stamp: '🔒 Data<br>not shared<div style="font:700 30px system-ui, sans-serif; letter-spacing:0; text-transform:none; margin-top:12px">your chat stays on your phone</div>',
+  },
+}[LANG];
+document.documentElement.lang = LANG;
 const BEAT = 60 / 140, BAR = BEAT * 4;
 const SCENES = [
   { id: 's1', a: 0, b: 2 * BAR, cap: '' },
-  { id: 's2', a: 2 * BAR, b: 4 * BAR, cap: 'Le quiz sur <b>ton groupe WhatsApp</b>' },
-  { id: 's3', a: 4 * BAR, b: 6 * BAR, cap: '1. Exporte la discussion<small>avec les médias, c\'est encore plus drôle</small>' },
-  { id: 's4', a: 6 * BAR, b: 8 * BAR, cap: '2. Tes potes rejoignent,<br>chacun sur <b>son tel</b>' },
-  { id: 's5', a: 8 * BAR, b: 11 * BAR, cap: '3. Votez. <b>Vite.</b>' },
-  { id: 's6', a: 11 * BAR, b: 13 * BAR, cap: '<b>+2</b> si t\'as bon, −1 si t\'as faux' },
-  { id: 's7', a: 13 * BAR, b: 15 * BAR, cap: 'Tous dans la même pièce' },
+  { id: 's2', a: 2 * BAR, b: 4 * BAR, cap: TX.caps.s2 },
+  { id: 's3', a: 4 * BAR, b: 6 * BAR, cap: TX.caps.s3 },
+  { id: 's4', a: 6 * BAR, b: 8 * BAR, cap: TX.caps.s4 },
+  { id: 's5', a: 8 * BAR, b: 11 * BAR, cap: TX.caps.s5 },
+  { id: 's6', a: 11 * BAR, b: 13 * BAR, cap: TX.caps.s6 },
+  { id: 's7', a: 13 * BAR, b: 15 * BAR, cap: TX.caps.s7 },
   { id: 's8', a: 15 * BAR, b: 16 * BAR, cap: '' },
-  { id: 's9', a: 16 * BAR, b: 18 * BAR, cap: 'Lance ta partie ce soir' },
+  { id: 's9', a: 16 * BAR, b: 18 * BAR, cap: TX.caps.s9 },
 ];
 window.DURATION = 18 * BAR;   // ≈ 30,9 s
 
@@ -171,20 +219,14 @@ const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647
 const beatPulse = t => Math.exp(-((t % BEAT) / 0.09));
 
 // ——— Construction ———
-const CHAT = [
-  ['Julie', 'qui ramène les chips ce soir ?'], ['Tom', "j'arrive dans 5 min, promis", 1], ['Inès', 'mdrrr encore ?'],
-  ['Max', "quelqu'un a vu mes clés ??"], ['Sophie', '📸 photo'], ['Julie', 'TROP BIEN 😂😂'], ['Tom', 'bref.', 1],
-  ['Inès', 'vous êtes où ?'], ['Max', 'en vrai je suis chaud'], ['Julie', 'qui prend le dessert'],
-  ['Sophie', '💀💀💀'], ['Tom', 'on vote', 1], ['Inès', "j'avoue..."], ['Max', 'c\'est clair'], ['Julie', 'ahahahah'],
-  ['Tom', 'je suis devant', 1], ['Inès', 'tkt'], ['Sophie', 'non mais ALLÔ'],
-];
+const CHAT = TX.chat;
 $('s1chat').innerHTML = [...CHAT, ...CHAT].map(([n, m, me]) =>
   `<div class="bubble${me ? ' me' : ''}" style="font-size:44px; align-self:${me ? 'flex-end' : 'flex-start'}; max-width:80%"><small>${n}</small>${m}</div>`).join('');
-const S1WORDS = ['Ton', 'groupe', 'WhatsApp', 'a', 'des', 'secrets.'];
-$('s1t').innerHTML = S1WORDS.map((w, i) => `<span id="w${i}" style="display:inline-block; margin:0 .12em">${i === 2 ? `<span class="tag">${w}</span>` : w}</span>${i === 1 || i === 2 ? '<br>' : ' '}`).join('');
+const S1WORDS = TX.words;
+$('s1t').innerHTML = S1WORDS.map((w, i) => `<span id="w${i}" style="display:inline-block; margin:0 .12em">${i === TX.tagWord ? `<span class="tag">${w}</span>` : w}</span>${TX.breaks.includes(i) ? '<br>' : ' '}`).join('');
 
-const PLAYERS = ['Julie', 'Tom', 'Inès'];
-$('s4list').innerHTML = ['Toi (hôte)', ...PLAYERS].map((n, i) => `<div id="s4p${i}" class="card" style="padding:18px 26px; display:flex; justify-content:space-between"><span>${n}</span><span style="color:var(--good)">✓</span></div>`).join('');
+const PLAYERS = TX.players;
+$('s4list').innerHTML = [TX.you, ...PLAYERS].map((n, i) => `<div id="s4p${i}" class="card" style="padding:18px 26px; display:flex; justify-content:space-between"><span>${n}</span><span style="color:var(--good)">✓</span></div>`).join('');
 // Faux QR code : un damier fixe, il ne mène nulle part.
 {
   const c = $('s4qr').getContext('2d'), n = 25, s = 300 / n;
@@ -197,7 +239,22 @@ $('s4list').innerHTML = ['Toi (hôte)', ...PLAYERS].map((n, i) => `<div id="s4p$
   }
 }
 
-const OPTIONS = ['Julie', 'Tom', 'Inès', 'Max'];
+const OPTIONS = TX.options;
+// Textes fixes des scènes
+$('s3h').textContent = TX.host;
+$('s3btn').textContent = TX.import;
+$('s3done').innerHTML = TX.found.map(x => `<div>${x}</div>`).join('');
+$('s4l').textContent = TX.code;
+$('s4pl').textContent = TX.playersTitle;
+PLAYERS.forEach((n, i) => $('s4m' + i).append(n));
+$('s5q').innerHTML = TX.quote;
+$('s5askt').textContent = TX.ask;
+$('s5round').textContent = TX.round;
+$('s6pre').textContent = TX.pre;
+$('s6namet').textContent = TX.winner;
+$('s7t').innerHTML = TX.live;
+$('s9sub').textContent = TX.sub;
+$('s9stamp').innerHTML = TX.stamp;
 $('s5votes').innerHTML = OPTIONS.map((n, i) => `<div class="btn vote" id="s5o${i}" style="font-size:46px; padding:40px 34px"><span>${n}</span><span class="dots">${'<span class="dot"></span>'.repeat(3)}</span></div>`).join('');
 
 seed = 3;
@@ -215,10 +272,10 @@ const BURSTS = Array.from({ length: 26 }, (_, i) => ({ e: EMO[i % EMO.length], t
 $('s7emo').innerHTML = BURSTS.map((b, i) => `<div class="emoji" id="em${i}">${b.e}</div>`).join('');
 
 const FLASHES = [
-  { icon: '👻', label: 'Qui est le fantôme du groupe ?', bg: '#2d2839' },
-  { icon: '🎡', label: 'Roue de la fortune : points ×2', bg: '#ffcf3f', ink: '#1e1a10' },
-  { icon: '🐸', label: 'Qui envoie tout le temps ce sticker ?', bg: '#52d18f', ink: '#10221a' },
-  { icon: '📸', label: 'Le montage photo de fin', bg: '#ff7a6b', ink: '#2a0d08' },
+  { icon: '👻', label: TX.flashes[0], bg: '#2d2839' },
+  { icon: '🎡', label: TX.flashes[1], bg: '#ffcf3f', ink: '#1e1a10' },
+  { icon: '🐸', label: TX.flashes[2], bg: '#52d18f', ink: '#10221a' },
+  { icon: '📸', label: TX.flashes[3], bg: '#ff7a6b', ink: '#2a0d08' },
 ];
 
 // ——— Rendu d'une image ———
@@ -253,7 +310,7 @@ const SCENE_FX = {
     $('s1chat').style.filter = lt < drop ? 'none' : 'blur(3px)';
     S1WORDS.forEach((_, i) => {
       const p = pop(lt, drop + i * BEAT / 2, 0.22);
-      $('w' + i).style.transform = `scale(${p.toFixed(3)}) rotate(${i === 2 ? -3 : 0}deg)`;
+      $('w' + i).style.transform = `scale(${p.toFixed(3)}) rotate(${i === TX.tagWord ? -3 : 0}deg)`;
       $('w' + i).style.opacity = lt >= drop + i * BEAT / 2 ? 1 : 0;
     });
     $('flash').style.opacity = (0.6 * Math.exp(-Math.max(0, lt - drop) / 0.08) * (lt >= drop ? 1 : 0)).toFixed(3);
@@ -274,7 +331,7 @@ const SCENE_FX = {
     const an = prog(lt, 1.0, 1.4);
     $('s3prog').style.opacity = lt > 1.0 ? 1 : 0;
     $('s3bar').style.width = `${(easeOut(an) * 100).toFixed(1)}%`;
-    $('s3txt').textContent = an < 1 ? 'Analyse de 12 480 messages…' : 'Analyse terminée';
+    $('s3txt').textContent = an < 1 ? TX.analysing : TX.analysed;
     [...$('s3done').children].forEach((el, i) => { const p = pop(lt, 2.45 + i * 0.12, 0.2); el.style.transform = `scale(${p.toFixed(3)})`; el.style.opacity = lt > 2.45 + i * 0.12 ? 1 : 0; });
     $('s3done').style.opacity = lt > 2.4 ? 1 : 0;
   },
@@ -327,9 +384,9 @@ const SCENE_FX = {
     // Classement : Tom (bonne réponse, +2) passe de 3e à 1er ; Inès et Julie se sont trompées (−1).
     const swap = easeOut(prog(lt, 1.9, 0.6));
     const rows = [
-      { el: 's6r0', from: 0, to: 1, name: 'Inès', pts: [8, 7], d: '−1' },
-      { el: 's6r1', from: 1, to: 2, name: 'Julie', pts: [7, 6], d: '−1' },
-      { el: 's6r2', from: 2, to: 0, name: 'Tom', pts: [7, 9], d: '+2' },
+      { el: 's6r0', from: 0, to: 1, name: TX.rows[0], pts: [8, 7], d: '−1' },
+      { el: 's6r1', from: 1, to: 2, name: TX.rows[1], pts: [7, 6], d: '−1' },
+      { el: 's6r2', from: 2, to: 0, name: TX.rows[2], pts: [7, 9], d: '+2' },
     ];
     rows.forEach(r => {
       const el = $(r.el);
@@ -341,8 +398,8 @@ const SCENE_FX = {
       el.children[2].textContent = swap > 0.5 ? r.pts[1] : r.pts[0];
       el.children[3].textContent = swap > 0.3 ? r.d : '';
       el.children[3].style.color = r.d.startsWith('+') ? 'var(--good)' : 'var(--bad)';
-      el.style.borderColor = r.name === 'Tom' && swap > 0.3 ? 'var(--good)' : 'var(--line)';
-      el.style.zIndex = r.name === 'Tom' ? 2 : 1;
+      el.style.borderColor = r.name === TX.rows[2] && swap > 0.3 ? 'var(--good)' : 'var(--line)';
+      el.style.zIndex = r.name === TX.rows[2] ? 2 : 1;
     });
   },
   s7(lt, dur, t) {

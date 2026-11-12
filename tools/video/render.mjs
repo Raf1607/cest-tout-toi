@@ -3,6 +3,7 @@
 // ffmpeg assemble le tout.
 //   npm install            (une fois : puppeteer-core et ffmpeg-static)
 //   node tools/video/render.mjs [sortie.mp4]
+//   node tools/video/render.mjs --lang en            (version anglaise)
 //   node tools/video/render.mjs --stills 1.5,5,9   (images fixes à ces instants, pour vérifier)
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -13,8 +14,12 @@ import puppeteer from 'puppeteer-core';
 import ffmpeg from 'ffmpeg-static';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const stillsAt = process.argv[2] === '--stills' ? process.argv[3].split(',').map(Number) : null;
-const OUT = (!stillsAt && process.argv[2]) || join(ROOT, 'promo', 'who-is-bro-9x16.mp4');
+const args = process.argv.slice(2);
+const opt = name => { const i = args.indexOf(name); return i >= 0 ? args.splice(i, 2)[1] : null; };
+const LANG = opt('--lang') === 'en' ? 'en' : 'fr';
+const stills = opt('--stills');
+const stillsAt = stills ? stills.split(',').map(Number) : null;
+const OUT = args[0] || join(ROOT, 'promo', LANG === 'en' ? 'who-is-bro-9x16-en.mp4' : 'who-is-bro-9x16.mp4');
 const FPS = 30;
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
@@ -35,7 +40,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--hide-scrollbars'] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1080, height: 1920, deviceScaleFactor: 1 });
-await page.goto(`${base}/tools/video/promo.html`, { waitUntil: 'networkidle0' });
+await page.goto(`${base}/tools/video/promo.html?lang=${LANG}`, { waitUntil: 'networkidle0' });
 await page.evaluate(() => document.fonts.ready);
 const duration = await page.evaluate(() => window.DURATION);
 
@@ -43,7 +48,7 @@ if (stillsAt) {
   await mkdir(join(ROOT, 'promo', 'stills'), { recursive: true });
   for (const t of stillsAt) {
     await page.evaluate(x => window.renderAt(x), t);
-    await page.screenshot({ path: join(ROOT, 'promo', 'stills', `t${t}.jpg`), type: 'jpeg', quality: 80 });
+    await page.screenshot({ path: join(ROOT, 'promo', 'stills', `${LANG}-t${t}.jpg`), type: 'jpeg', quality: 80 });
   }
   await browser.close();
   server.close();
@@ -53,7 +58,7 @@ if (stillsAt) {
 
 // Musique : AudioBuffer → WAV 16 bits.
 await mkdir(dirname(OUT), { recursive: true });
-const wav = join(dirname(OUT), 'musique.wav');
+const wav = join(dirname(OUT), `musique-${LANG}.wav`);
 const b64 = await page.evaluate(async seconds => {
   const { renderPhonk } = await import('/js/phonk.js');
   const buf = await renderPhonk(seconds);

@@ -63,7 +63,7 @@ npm install && node tools/video/render.mjs                     # vidéo de prés
 | `og.png`, `apple-touch-icon.png` | aperçu quand on partage le lien, icône d'écran d'accueil (`node tools/make-og.mjs`, depuis `tools/og.html`) |
 | `CNAME` | domaine du site (whoisbro.lol), lu par GitHub Pages |
 | `qui-sommes-nous.html`, `about.html`, `raph.jpg` | page « Qui sommes-nous ? » en français et en anglais (photo sans métadonnées GPS) |
-| `video/who-is-bro.mp4` | vidéo de présentation, liée en bas de l'accueil (copie de `promo/`, après `node tools/video/render.mjs`) |
+| `video/who-is-bro.mp4`, `video/who-is-bro-en.mp4` | vidéo de présentation en français et en anglais, liée en bas de l'accueil (copies de `promo/`, après `node tools/video/render.mjs [--lang en]`) |
 | `privacy.html` | page « protection des données » en anglais |
 | `confidentialite.html` | page « protection des données », liée depuis l'accueil |
 | `js/i18n.js` | textes en français et en anglais |
