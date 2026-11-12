@@ -280,7 +280,7 @@ function homeScreen() {
   return `
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
-      <p>Le jeu qui démasque les tics de langage de votre groupe WhatsApp.</p>
+      <p>Le quiz sur votre groupe WhatsApp&nbsp;: qui a dit ça, qui envoie ce sticker, qui est le fantôme du groupe&nbsp;?</p>
       ${gamesPlayed ? `<p class="counter"><b>${fmt(gamesPlayed)}</b> partie${gamesPlayed > 1 ? 's' : ''} jouée${gamesPlayed > 1 ? 's' : ''}</p>` : ''}
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
