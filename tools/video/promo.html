@@ -72,7 +72,7 @@
         </div>
       </div>
       <div class="card" id="s3done" style="display:flex; flex-direction:column; gap:12px; font-size:34px">
-        <div>✅ 6 membres</div><div>🗣️ 48 tics et expressions</div><div>🏆 14 records</div><div>🖼️ 320 stickers et photos</div>
+        <div>✅ 6 membres</div><div>🗣️ 48 expressions cultes</div><div>🏆 14 records</div><div>🖼️ 320 stickers et photos</div>
       </div>
     </div>
     <div class="abs card" id="s3file" style="left:240px; width:600px; top:0; display:flex; align-items:center; gap:24px; font-size:32px; background:#fff; color:#1b1824; border:0">
@@ -136,6 +136,9 @@
     <div class="abs disp" id="s9logo" style="left:0; right:0; top:520px; text-align:center; font-size:170px; white-space:nowrap">Who is <span class="tag" style="transform:rotate(-3deg)">bro</span> ?</div>
     <div class="abs" id="s9url" style="left:50%; top:820px; transform:translateX(-50%); font:800 90px var(--display); color:var(--accent); border:6px solid var(--line); border-radius:999px; padding:20px 60px; white-space:nowrap">whoisbro.lol</div>
     <div class="abs" id="s9sub" style="left:0; right:0; top:1040px; text-align:center; font-size:46px; color:var(--muted)">Gratuit · Sans appli · Dès 2 joueurs</div>
+    <div class="abs" id="s9stamp" style="left:50%; top:1190px; width:640px; margin-left:-320px; padding:22px 30px; border:10px double #52d18f; border-radius:26px; color:#52d18f; text-align:center; font:800 60px/1.05 var(--display); letter-spacing:.04em; text-transform:uppercase">
+      🔒 Données<br>non partagées<div style="font:700 30px system-ui, sans-serif; letter-spacing:0; text-transform:none; margin-top:12px">ta discussion reste sur ton tel</div>
+    </div>
   </div>
 
   <div id="cap"></div>
@@ -377,6 +380,16 @@ const SCENE_FX = {
     $('s9url').style.transform = `translateX(-50%) scale(${u.toFixed(3)})`;
     $('s9url').style.opacity = lt > BEAT ? 1 : 0;
     $('s9sub').style.opacity = clamp((lt - BEAT * 2) / 0.3);
+    // Tampon : il « tombe » sur la carte, avec un flash et une secousse.
+    const at = BEAT * 3, k = lt - at;
+    $('s9stamp').style.opacity = k < 0 ? 0 : 0.92;
+    $('s9stamp').style.transform = `rotate(-9deg) scale(${(k < 0 ? 2.4 : 1 + 1.4 * Math.exp(-k / 0.05)).toFixed(3)})`;
+    if (k >= 0 && k < 0.3) {
+      $('flash').style.opacity = (0.35 * Math.exp(-k / 0.06)).toFixed(3);
+      seed = Math.floor(t * 60) + 7;
+      const sh = 30 * Math.exp(-k / 0.08);
+      document.getElementById('stage').style.transform = `translate(${((rnd() - .5) * sh).toFixed(1)}px, ${((rnd() - .5) * sh).toFixed(1)}px)`;
+    }
     document.getElementById('stage').style.opacity = clamp((dur - lt) / 0.6);
   },
 };

@@ -95,8 +95,8 @@ async function host(getFile) {
     const withTics = analysis.authors.filter(a => a.tics.length);
     if (withTics.length < 2) {
       // Les chiffres aident à comprendre : export mal lu, ou groupe où personne ne se distingue.
-      throw new Error(`Pas assez de tics trouvés pour jouer : ${fmt(chat.messages.length)} messages lus, `
-        + `${analysis.authors.length} membres avec au moins 20 messages, ${withTics.length} avec des tics `
+      throw new Error(`Pas assez de matière pour jouer : ${fmt(chat.messages.length)} messages lus, `
+        + `${analysis.authors.length} membres avec au moins 20 messages, ${withTics.length} avec des questions possibles `
         + `(${withTics.map(a => a.name).join(', ') || 'aucun'}).`);
     }
     setUi({ busy: 'Création de la partie…' });
@@ -363,7 +363,7 @@ function lobbyScreen() {
       const busy = owner && !mine && owner.connected;
       return `<button data-act="claim" data-author="${esc(m.name)}" class="${mine ? 'on' : ''}" ${busy ? 'disabled' : ''}>
         <span>${esc(m.name)}</span>
-        <small>${busy ? 'déjà pris' : `${fmt(m.messages)} messages${m.tics ? '' : ' · aucun tic'}`}</small>
+        <small>${busy ? 'déjà pris' : `${fmt(m.messages)} messages${m.tics ? '' : ' · rien à deviner'}`}</small>
       </button>`;
     }).join('')}</div>
 
@@ -673,7 +673,7 @@ function endScreen() {
     <header class="brand small"><h1>Classement</h1></header>
     <ol class="ranking">${ranking.map(p => `
       <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(p.author)}${p.id === v.me ? ' <small>(toi)</small>' : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
-    <h2>Les tics de chacun</h2>
+    <h2>Le portrait de chacun</h2>
     <div class="portraits">${v.portraits.map(x => `
       <div class="portrait"><b>${esc(x.name)}</b><p>${x.tics.map(t => `<span>${esc(t)}</span>`).join('')}</p></div>`).join('')}</div>
     ${v.host ? '<div class="actions"><button class="primary big" data-act="replay">Rejouer</button></div>' : `<p class="wait">L'hôte peut relancer une partie.</p>`}`;
