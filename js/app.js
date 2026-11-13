@@ -195,7 +195,7 @@ async function launch(analysis, entries, file, snap = null) {
     game = snap ? Game.restore(analysis, snap) : new Game(analysis, room.code, myId, null);
     // La partie est gardée sur ce téléphone (jamais ailleurs) : un rechargement par erreur la reprend.
     store.set('ctt-hosting', '1');
-    if (!snap) saveSave(`${myId}:session`, { analysis, file, demo: demoGame }).catch(err => console.warn('Sauvegarde impossible', err));
+    if (!snap) saveSession(analysis, file);
     let saving = null;
     const persist = () => {
       clearTimeout(saving);
@@ -218,6 +218,18 @@ async function launch(analysis, entries, file, snap = null) {
     game.changed();
 }
 
+// Safari en navigation privée refuse les fichiers dans IndexedDB : on garde alors le contenu brut
+// de la discussion (jusqu'à 100 Mo ; au-delà, la partie reprend sans les médias).
+const RAW_MAX = 100 * 1024 * 1024;
+async function saveSession(analysis, file) {
+  const key = `${myId}:session`, value = { analysis, file, demo: demoGame };
+  try { await saveSave(key, value); }
+  catch {
+    const raw = file && file.size <= RAW_MAX ? { name: file.name, type: file.type, data: await file.arrayBuffer() } : null;
+    await saveSave(key, { ...value, file: raw }).catch(err => console.warn('Sauvegarde impossible', err));
+  }
+}
+
 // Au chargement : l'hôte a rechargé sa page en pleine partie ? On la reprend, avec le même code.
 // Sinon (onglet fermé puis rouvert), une ancienne sauvegarde est effacée.
 async function resumeHost() {
@@ -227,8 +239,10 @@ async function resumeHost() {
     const snap = await loadSave(`${myId}:state`);
     if (!session || !snap || snap.hostId !== myId) throw new Error('nothing');
     demoGame = !!session.demo;
-    const { entries } = session.file ? await readExport(session.file) : { entries: new Map() };
-    await launch(session.analysis, entries, session.file, snap);
+    const raw = session.file?.data;
+    const file = raw ? new File([raw], session.file.name, { type: session.file.type }) : session.file;
+    const { entries } = file ? await readExport(file) : { entries: new Map() };
+    await launch(session.analysis, entries, file, snap);
   } catch (err) {
     store.remove('ctt-hosting');
     clearSaves(myId);
