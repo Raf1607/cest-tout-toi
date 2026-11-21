@@ -49,8 +49,7 @@ ranking (dernière manche, champion révélé)
 
 - Si pas de montage : `ranking → patron → end`.
 - La phase `patron` est **sautée** (directement `end`) si :
-  - moins de 3 joueurs classés (à 2, la roue désigne forcément l'autre : aucun intérêt) → dans ce cas **afficher quand même l'écran champion** (voir §4.2) et les écrans « gratuit » aux autres, sans roue ;
-    → règle précise : `< 2` joueurs classés : sauter `patron` entièrement ; `== 2` : `patron` sans roue (pas de désigné, seulement champion + gratuit) ;
+  - moins de 2 joueurs classés ;
   - la partie a déjà fait une phase `patron` depuis l'ouverture du salon (on ne redemande pas en cas de « Rejouer » dans la même soirée) — garder un flag `this.patronDone` sur l'hôte, persistant dans le snapshot, remis à zéro seulement à la création d'un nouveau `Game`.
 - Joueurs « classés » = même filtre que le classement final : `p.author || p.outside`.
 
@@ -79,6 +78,7 @@ const patronId = eligible.length ? eligible[randomInt(eligible.length)].id : nul
 ```
 
 - Jamais un champion. Jamais un joueur déconnecté.
+- **À deux joueurs aussi, la roue tourne** : elle porte les deux prénoms, frôle le champion pour le suspense, et s'arrête forcément sur l'autre (pipée). Même rendu qu'à trois ou plus.
 - Animation : la roue porte les prénoms de **tous** les joueurs classés (champions inclus, pour le suspense), ralentit en passant sur un champion, et s'arrête sur `patronId`. L'angle final est calculé par l'hôte et envoyé dans la vue (comme `v.wheel.index`) pour que tous les téléphones affichent le même résultat.
 - Si `eligible` est vide (tout le monde ex æquo) : pas de roue ; tout le monde est « champion » (écran 2 €).
 
@@ -265,7 +265,7 @@ Le jeu ne connaît pas le genre des joueurs : garder les formes neutres (« épa
 ```js
 export const PATRON_SPIN_MS = 4500;
 export const PATRON_MAX_MS = 60000;
-export const PATRON_MIN_PLAYERS = 3;   // en dessous : pas de roue (2) ou pas de phase (1)
+export const PATRON_MIN_PLAYERS = 2;   // en dessous : pas de phase patron
 const AMOUNTS = { patron: 100, champion: 200, free: 100 };   // centimes
 const BADGE_RANK = { crown: 1, diamond: 2 };
 ```
@@ -276,7 +276,7 @@ Option dans les réglages de l'hôte ? **Non** pour la V1 (toujours actif). Pré
 
 ## 11. Tests
 
-- `tools/test-game.mjs` : tirage pipé (500 tirages) — jamais un champion, jamais un déconnecté, ex æquo tous protégés, `eligible` vide → pas de roue ; `patronDone` empêche une 2ᵉ phase après « Rejouer » ; snapshot/restore en phase `patron`.
+- `tools/test-game.mjs` : tirage pipé (500 tirages) — jamais un champion, jamais un déconnecté, ex æquo tous protégés, `eligible` vide → pas de roue ; à 2 joueurs la roue s'arrête toujours sur le non-champion ; `patronDone` empêche une 2ᵉ phase après « Rejouer » ; snapshot/restore en phase `patron`.
 - `tools/test-devices.mjs` : scénarios existants à adapter (la fin passe désormais par `patron`) ; vérifier sur chaque appareil : 3 rôles affichés correctement, « Plus tard » mène à l'écran de fin, pas de débordement horizontal, pas d'erreur JS. Stripe **mocké** dans les tests (intercepter `js.stripe.com` et le Worker ; simuler succès, annulation, échec).
 - Test manuel en **mode test Stripe** sur un vrai iPhone (Apple Pay, carte de test Stripe) et un vrai Android (Google Pay) avant tout passage en `pk_live`.
 - Vérifier qu'**aucune** requête vers Stripe ou le Worker ne part depuis l'accueil, le salon ou pendant les manches.
