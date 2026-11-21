@@ -160,6 +160,16 @@
   .members button small { font-weight: 500; font-size: 12px; }
   .members button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   .members button.on small { color: rgba(30, 26, 16, .7); }
+  .members button[hidden], .more-members[hidden] { display: none; }
+  .member-search {
+    width: 100%; font: 500 17px system-ui, sans-serif; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  }
+  .member-search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .more-members { align-self: center; font-size: 15px; }
+  .me-pick { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 14px; font-size: 17px; }
+  .me-pick b { color: var(--accent); }
+  .me-pick .link { padding: 4px; font-size: 15px; }
 
   .players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .players li { display: flex; align-items: center; gap: 8px; background: var(--surface); border-radius: 12px; padding: 10px 14px; }
@@ -368,17 +378,17 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211319",
-  "./js/tics.js": "./js/tics.js?v=202611211319",
-  "./js/game.js": "./js/game.js?v=202611211319",
-  "./js/net.js": "./js/net.js?v=202611211319",
-  "./js/media.js": "./js/media.js?v=202611211319",
-  "./js/records.js": "./js/records.js?v=202611211319",
-  "./js/i18n.js": "./js/i18n.js?v=202611211319",
-  "./js/resume.js": "./js/resume.js?v=202611211319",
-  "./js/phonk.js": "./js/phonk.js?v=202611211319"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211324",
+  "./js/tics.js": "./js/tics.js?v=202611211324",
+  "./js/game.js": "./js/game.js?v=202611211324",
+  "./js/net.js": "./js/net.js?v=202611211324",
+  "./js/media.js": "./js/media.js?v=202611211324",
+  "./js/records.js": "./js/records.js?v=202611211324",
+  "./js/i18n.js": "./js/i18n.js?v=202611211324",
+  "./js/resume.js": "./js/resume.js?v=202611211324",
+  "./js/phonk.js": "./js/phonk.js?v=202611211324"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611211319"></script>
+<script type="module" src="js/app.js?v=202611211324"></script>
 </body>
 </html>

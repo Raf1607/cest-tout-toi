@@ -121,7 +121,7 @@ async function play(sc) {
     for (const [i, p] of ps.entries()) {
       const btn = p.page.locator('.members button:not([disabled])').nth(i);
       await btn.click();
-      await p.page.waitForSelector('.members button.on', { timeout: 20000 });
+      await p.page.waitForSelector('.me-pick', { timeout: 20000 });
     }
     for (const p of ps) await snap(p, 'salon', sc.name);
     await host.page.waitForSelector('[data-act="start"]:not([disabled])', { timeout: 20000 });

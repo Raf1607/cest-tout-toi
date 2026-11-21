@@ -25,6 +25,10 @@ const WHEEL_CHANCE = 1 / 4;
 
 // Vrai hasard du navigateur, pas Math.random.
 const randomInt = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+// Grand groupe : au plus 6 réponses proposées par manche. Les leurres sont tirés parmi les membres
+// actifs (au moins 2 % des messages du groupe), d'autant plus souvent qu'ils écrivent beaucoup.
+export const MAX_CHOICES = 6;
+const ACTIVE_SHARE = 0.02;
 const chance = p => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 < p;
 
 // « Raph » → « Pahr » : les lettres de chaque mot mélangées, majuscule en tête.
@@ -192,7 +196,7 @@ export class Game {
         p.author = msg.author;
       }
     } else if (msg.t === 'vote' && this.phase === 'question' && msg.n === this.round.n
-               && this.options.includes(msg.author)) {      // on peut changer d'avis jusqu'à la fin
+               && (this.round.options || this.options).includes(msg.author)) {      // on peut changer d'avis jusqu'à la fin
       this.round.first ??= id;           // le premier à voter, pour la roue
       this.round.votes[id] = msg.author;
       this.checkVotes();
@@ -272,12 +276,35 @@ export class Game {
     this.round = {
       n: this.index + 1, card, votes: {}, endsAt: Date.now() + ms, effects,
       hint: effects.lettre ? letters[randomInt(letters.length)].toUpperCase() : null,
-      labels: effects.melange ? Object.fromEntries(this.options.map(n => [n, scramble(n)])) : null,
+      options: this.choicesFor(card.owner),
     };
+    this.round.labels = effects.melange ? Object.fromEntries(this.round.options.map(n => [n, scramble(n)])) : null;
     this.phase = 'question';
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.reveal(), ms + 300);
     this.changed();
+  }
+
+  // Réponses proposées : la bonne, puis les joueurs présents, puis des leurres actifs tirés au hasard
+  // (pondéré par le nombre de messages). Les membres trop peu actifs ne servent jamais de leurre.
+  choicesFor(owner) {
+    if (this.options.length <= MAX_CHOICES) return this.options;
+    const present = shuffle([...new Set([...this.players.values()].map(p => p.author))]
+      .filter(n => n && n !== owner && this.options.includes(n)));
+    const picked = [owner, ...present].slice(0, MAX_CHOICES);
+    const total = this.analysis.authors.reduce((sum, a) => sum + a.messages, 0);
+    const others = this.options.filter(n => !picked.includes(n))
+      .map(name => ({ name, weight: this.member(name).messages }))
+      .sort((a, b) => b.weight - a.weight);
+    const missing = MAX_CHOICES - picked.length;
+    const active = others.filter(o => o.weight >= total * ACTIVE_SHARE);
+    const pool = active.length >= missing ? active : others.slice(0, missing);   // sinon, les plus actifs qui restent
+    while (picked.length < MAX_CHOICES && pool.length) {
+      let r = Math.random() * pool.reduce((sum, o) => sum + o.weight, 0);
+      const i = Math.max(0, pool.findIndex(o => (r -= o.weight) < 0));
+      picked.push(pool.splice(i, 1)[0].name);
+    }
+    return picked.sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
   // Premier vote : il ne reste que 7 secondes aux autres. Tout le monde a voté : la manche se termine.
@@ -425,7 +452,7 @@ export class Game {
     }
     if (this.phase === 'question' || this.phase === 'reveal') {
       const { n, card, votes, endsAt } = this.round;
-      v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, of: card.tic.of || null, media: mediaOf(card.tic), options: this.options };
+      v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, of: card.tic.of || null, media: mediaOf(card.tic), options: this.round.options || this.options };
       if (this.phase === 'reveal' && card.tic.detail) v.round.detail = card.tic.detail;
       if (this.phase === 'question') {
         Object.assign(v.round, { remaining: Math.max(0, endsAt - Date.now()), seconds: this.settings.seconds, myVote: votes[id] || null });

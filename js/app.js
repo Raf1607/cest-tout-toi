@@ -450,7 +450,13 @@ function render() {
   else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
+  const searching = document.activeElement?.dataset?.input === 'member-search' ? document.activeElement.selectionStart : null;
   $app.innerHTML = banner + html;
+  if (view?.phase === 'lobby' && ui.screen === 'game') {
+    filterMembers();
+    const search = $app.querySelector('.member-search');
+    if (search && searching !== null) { search.focus(); search.setSelectionRange(searching, searching); }
+  }
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
   $app.dataset.key = key;
   if (inGame && view.phase === 'question') patchQuestion();
@@ -556,6 +562,41 @@ function segmented(name, values, current, label) {
     `<button data-act="set" data-key="${name}" data-value="${x}" class="${x === current ? 'on' : ''}">${name === 'seconds' ? x + ' s' : x}</button>`).join('')}</div>`;
 }
 
+// Choix de son nom dans la discussion. Grand groupe : un champ de recherche, et les membres sans
+// question repliés (on peut quand même s'y trouver). Une fois son nom choisi, la liste se replie.
+const MANY_MEMBERS = 12;
+const fold = s => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+function memberPicker(v, taken) {
+  const many = v.members.length > MANY_MEMBERS;
+  const members = [...v.members].sort((a, b) => (b.tics ? 1 : 0) - (a.tics ? 1 : 0));   // tri stable : par messages ensuite
+  const minor = members.filter(m => !m.tics).length;
+  return `
+    ${many ? `<input class="member-search" type="search" data-input="member-search" value="${esc(ui.memberQuery || '')}" placeholder="${T('searchName')}" aria-label="${T('searchName')}" autocomplete="off">` : ''}
+    <div class="members">${members.map(m => {
+      const owner = taken.get(m.name);
+      const mine = owner?.id === v.me;
+      const busy = owner && !mine && owner.connected;
+      return `<button data-act="claim" data-author="${esc(m.name)}" class="${mine ? 'on' : ''} ${many && !m.tics ? 'minor' : ''}" ${busy ? 'disabled' : ''}>
+        <span>${esc(m.name)}</span>
+        <small>${busy ? T('taken') : `${T('messagesCount', fmt(m.messages))}${m.tics ? '' : T('nothingToGuess')}`}</small>
+      </button>`;
+    }).join('')}</div>
+    ${many && minor ? `<button class="link more-members" data-act="more-members" data-n="${minor}"></button>` : ''}`;
+}
+
+// Filtre la liste sans la redessiner (pour ne pas perdre la saisie).
+function filterMembers() {
+  const q = fold((ui.memberQuery || '').trim());
+  for (const b of $app.querySelectorAll('.members button')) {
+    b.hidden = q ? !fold(b.dataset.author).includes(q) : b.classList.contains('minor') && !ui.allMembers;
+  }
+  const more = $app.querySelector('.more-members');
+  if (more) {
+    more.hidden = !!q;
+    more.textContent = ui.allMembers ? T('lessMembers') : T('moreMembers', more.dataset.n);
+  }
+}
+
 function lobbyScreen() {
   const v = view;
   const me = v.players.find(p => p.id === v.me);
@@ -583,15 +624,8 @@ function lobbyScreen() {
     </section>` : ''}
 
     <h2>${T('whoAreYou')}</h2>
-    <div class="members">${v.members.map(m => {
-      const owner = taken.get(m.name);
-      const mine = owner?.id === v.me;
-      const busy = owner && !mine && owner.connected;
-      return `<button data-act="claim" data-author="${esc(m.name)}" class="${mine ? 'on' : ''}" ${busy ? 'disabled' : ''}>
-        <span>${esc(m.name)}</span>
-        <small>${busy ? T('taken') : `${T('messagesCount', fmt(m.messages))}${m.tics ? '' : T('nothingToGuess')}`}</small>
-      </button>`;
-    }).join('')}</div>
+    ${me?.author && !ui.pickName ? `
+    <div class="me-pick"><span>${T('youAre', esc(me.author))}</span><button class="link" data-act="change-name">${T('changeName')}</button></div>` : memberPicker(v, taken)}
 
     <h2>${T('players')} <small>${v.players.filter(p => p.connected).length}</small></h2>
     ${playerList(v)}
@@ -968,7 +1002,9 @@ $app.addEventListener('click', async e => {
   else if (act === 'scan-cancel') { stopScan(); setUi({ screen: 'home' }); }
   else if (act === 'lang') { setLang(lang === 'fr' ? 'en' : 'fr'); saveLang(lang); render(); }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
-  else if (act === 'claim') send({ t: 'claim', author: el.dataset.author });
+  else if (act === 'claim') { ui.pickName = false; ui.memberQuery = ''; send({ t: 'claim', author: el.dataset.author }); }
+  else if (act === 'change-name') setUi({ pickName: true });
+  else if (act === 'more-members') { ui.allMembers = !ui.allMembers; filterMembers(); }
   else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
   else if (act === 'set') send({ t: 'settings', settings: { [el.dataset.key]: Number(el.dataset.value) } });
   else if (act === 'start' || act === 'next' || act === 'replay' || act === 'skip') {
@@ -1001,6 +1037,10 @@ $app.addEventListener('change', e => {
   if (input === 'photos') send({ t: 'settings', settings: { photos: e.target.checked } });
   if (input === 'slideshow') send({ t: 'settings', settings: { slideshow: e.target.checked } });
   if (input === 'wheel') send({ t: 'settings', settings: { wheel: e.target.checked } });
+});
+
+$app.addEventListener('input', e => {
+  if (e.target.dataset.input === 'member-search') { ui.memberQuery = e.target.value; filterMembers(); }
 });
 
 $app.addEventListener('submit', e => {

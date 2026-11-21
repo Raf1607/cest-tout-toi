@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { parseChat } from '../js/whatsapp.js';
 import { analyze } from '../js/tics.js';
-import { Game, WHEEL } from '../js/game.js';
+import { Game, WHEEL, MAX_CHOICES } from '../js/game.js';
 import { readZipExport } from './zip-export.mjs';
 
 const name = 'Discussion WhatsApp avec Les Potes.txt';
@@ -275,6 +275,28 @@ assert.equal(media.phase, 'end');
   assert.equal(r.request('z', 'Inconnu'), 'closed', 'toujours fermée aux nouveaux');
   assert.equal(r.view('b').round.n, 2);
   clearTimeout(r.timer);
+}
+
+// Grand groupe : 6 réponses au plus, la bonne et les joueurs présents toujours dedans,
+// jamais un membre trop peu actif comme leurre.
+{
+  const big = new Game(structuredClone(analysis), 'GROS', 'h', () => {});
+  const base = big.analysis.authors.length;
+  for (let i = 0; i < 30; i++) big.analysis.authors.push({ name: `Membre ${i}`, messages: i < 2 ? 3 : 400, tics: [], photos: [], stats: {} });
+  big.join('b');
+  big.handle('h', { t: 'claim', author: 'Julie Moreau' });
+  big.handle('b', { t: 'claim', author: 'Membre 0' });
+  big.options = big.analysis.authors.map(a => a.name);
+  assert.ok(big.options.length > base + 20);
+  for (let k = 0; k < 200; k++) {
+    const owner = big.options[k % big.options.length];
+    const choices = big.choicesFor(owner);
+    assert.equal(choices.length, MAX_CHOICES, 'six réponses');
+    assert.equal(new Set(choices).size, MAX_CHOICES, 'pas de doublon');
+    assert.ok(choices.includes(owner), 'la bonne réponse est proposée');
+    assert.ok(choices.includes('Julie Moreau') && choices.includes('Membre 0'), 'les joueurs présents sont proposés');
+    if (owner !== 'Membre 1') assert.ok(!choices.includes('Membre 1'), 'un membre trop peu actif ne sert pas de leurre');
+  }
 }
 
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));
