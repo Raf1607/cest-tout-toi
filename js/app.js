@@ -564,7 +564,7 @@ function lobbyScreen() {
     ${homeLogo()}
     <div class="group">
       ${icon(ICONS.chat)}<b>${esc(v.title)}</b>
-      <span class="media-ic ${v.withMedia ? '' : 'off'}" role="img" aria-label="${T(v.withMedia ? 'withMedia' : 'withoutMedia')}" title="${T(v.withMedia ? 'withMedia' : 'withoutMedia')}">${icon(v.withMedia ? ICONS.image : ICONS.imageOff)}</span>
+      <span class="media-ic ${v.withMedia ? '' : 'off'}" role="img" aria-label="${T(v.withMedia ? 'withMedia' : 'withoutMedia')}">${icon(v.withMedia ? ICONS.image : ICONS.imageOff)}</span>
     </div>
     ${v.host ? `
     <section class="card join-qr">
