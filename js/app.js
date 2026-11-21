@@ -478,6 +478,7 @@ const ICONS = {
   noUser: '<circle cx="10" cy="8" r="4"/><path d="M2 21a8 8 0 0 1 13-6.2M17 17l4 4M21 17l-4 4"/>',
   back: '<path d="M15 18l-6-6 6-6"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
   imageOff: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21M2 2l20 20"/>',
 };
 
@@ -490,7 +491,7 @@ function homeScreen() {
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
       <p>${T('tagline')}</p>
-      ${gamesPlayed ? `<p class="counter">${T('gamesPlayed', gamesPlayed)}</p>` : ''}
+      ${gamesPlayed ? `<p class="counter">${icon(ICONS.globe)}${T('gamesPlayed', gamesPlayed)}</p>` : ''}
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
     ${ui.notice ? `<p class="notice">${esc(ui.notice)}</p>` : ''}
