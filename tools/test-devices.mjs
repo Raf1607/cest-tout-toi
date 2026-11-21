@@ -42,7 +42,7 @@ const device = (label, name) => ({ label, engine: name === 'firefox' ? 'firefox'
 const SCENARIOS = [
   { name: 'fr-iphone-hote', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (avec médias).zip', reload: true,
     players: [device('iPhone SE', 'iPhone SE'), device('Pixel 7', 'Pixel 7'), device('Firefox Android', 'firefox')] },
-  { name: 'en-android-hote', locale: 'en-US', zip: 'WhatsApp Chat - The Crew (with media).zip',
+  { name: 'en-android-hote', locale: 'en-US', zip: 'WhatsApp Chat - The Crew (with media).zip', outsider: 2,
     players: [device('Galaxy S9+', 'Galaxy S9+'), device('iPhone 15 Pro Max', 'iPhone 15 Pro Max'), device('Galaxy Tab S9', 'Galaxy Tab S9')] },
   { name: 'fr-txt-ipad', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (iPhone).txt', rounds: 6, quitFromLobby: true,
     players: [device('iPad Mini', 'iPad Mini'), device('Galaxy A55', 'Galaxy A55')] },
@@ -117,10 +117,14 @@ async function play(sc) {
       await host.page.click('[data-act="admit"][data-ok="1"]', { timeout: 60000 });
       await g.page.waitForSelector('.members', { timeout: 60000 });
     }
-    // Chacun choisit un membre différent.
+    // Chacun choisit un membre différent (et, selon le scénario, un joueur n'est pas dans la discussion).
     for (const [i, p] of ps.entries()) {
-      const btn = p.page.locator('.members button:not([disabled])').nth(i);
-      await btn.click();
+      if (i === sc.outsider) {
+        await p.page.click('[data-act="outside"]');
+        await p.page.click('form.outside-form button[type="submit"]');   // prénom déjà rempli
+      } else {
+        await p.page.locator('.members button:not([disabled])').nth(i).click();
+      }
       await p.page.waitForSelector('.me-pick', { timeout: 20000 });
     }
     for (const p of ps) await snap(p, 'salon', sc.name);

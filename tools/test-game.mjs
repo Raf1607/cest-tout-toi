@@ -299,4 +299,43 @@ assert.equal(media.phase, 'end');
   }
 }
 
+// Joueurs hors discussion : ils votent et marquent des points, mais ne sont jamais une réponse.
+// Si personne (ou presque) n'est dans la discussion, les membres absents sont toujours de la partie.
+{
+  const out = new Game(analysis, 'HORS', 'h', () => {});
+  out.wheelChance = 0;
+  assert.equal(out.request('x', 'Zoé'), 'wait');
+  out.admit('x', true);
+  assert.equal(out.players.get('x').name, 'Zoé', 'le prénom tapé pour entrer est gardé');
+  out.handle('h', { t: 'settings', settings: { absent: false, rounds: 3 } });
+  out.handle('h', { t: 'outside', name: '  ' });
+  assert.equal(out.players.get('h').outside, false, 'il faut un prénom');
+  out.handle('h', { t: 'outside', name: 'Léo' });
+  out.handle('x', { t: 'outside', name: 'Zoé' });
+  assert.equal(out.canStart().ok, true, 'deux invités hors discussion peuvent lancer');
+  out.handle('h', { t: 'start' });
+  assert.equal(out.phase, 'question');
+  assert.ok(out.options.length >= 2 && !out.options.includes('Léo') && !out.options.includes('Zoé'), 'les invités ne sont jamais une réponse');
+  const answer = out.round.card.owner;
+  out.handle('h', { t: 'vote', n: 1, author: answer });
+  out.handle('x', { t: 'vote', n: 1, author: out.round.options.find(o => o !== answer) });
+  out.reveal();
+  assert.equal(out.players.get('h').score, 2, 'un invité marque des points');
+  out.handle('h', { t: 'next' });
+  assert.deepEqual(out.view('h').ranking.rows.map(r => r.name).sort(), ['Léo', 'Zoé'], 'le classement affiche leurs prénoms');
+  assert.ok(out.view('x').players.every(p => p.outside));
+  clearTimeout(out.timer);
+
+  // Un invité peut redevenir un membre, et inversement.
+  const mix = new Game(analysis, 'MIX', 'h', () => {});
+  mix.join('x');
+  mix.handle('h', { t: 'claim', author: 'Inès' });
+  mix.handle('x', { t: 'outside', name: 'Zoé' });
+  mix.handle('h', { t: 'settings', settings: { absent: false } });
+  assert.deepEqual(mix.candidates().sort(), mix.analysis.authors.filter(a => a.tics.length).map(a => a.name).sort(), 'un seul membre en jeu : les absents sont ajoutés');
+  mix.handle('x', { t: 'claim', author: 'Karim B' });
+  assert.equal(mix.players.get('x').outside, false);
+  assert.deepEqual(mix.candidates(), ['Inès', 'Karim B'], 'deux membres en jeu, absents décochés : rien de plus');
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

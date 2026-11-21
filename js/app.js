@@ -407,12 +407,14 @@ function render() {
   else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
-  const searching = document.activeElement?.dataset?.input === 'member-search' ? document.activeElement.selectionStart : null;
+  // Un champ du salon en cours de saisie (recherche, prénom) garde le curseur quand l'écran se redessine.
+  const typing = document.activeElement?.dataset?.input;
+  const caret = typing ? document.activeElement.selectionStart : null;
   $app.innerHTML = banner + html;
   if (view?.phase === 'lobby' && ui.screen === 'game') {
     filterMembers();
-    const search = $app.querySelector('.member-search');
-    if (search && searching !== null) { search.focus(); search.setSelectionRange(searching, searching); }
+    const field = typing && $app.querySelector(`[data-input="${typing}"]`);
+    if (field) { field.focus(); try { field.setSelectionRange(caret, caret); } catch { /* champ sans curseur */ } }
   }
   $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
   $app.dataset.key = key;
@@ -535,6 +537,7 @@ function playerList(v) {
   return `<ul class="players">${v.players.map(p => `
     <li class="${p.connected ? '' : 'off'}">
       <span class="name">${esc(nameOf(p))}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span>
+      ${p.outside ? `<small class="tag">${T('outsideTag')}</small>` : ''}
       ${p.host ? `<small class="tag">${T('hostTag')}</small>` : ''}
       ${p.connected ? '' : `<small class="tag">${T('offTag')}</small>`}
     </li>`).join('')}</ul>`;
@@ -565,6 +568,17 @@ function memberPicker(v, taken) {
       </button>`;
     }).join('')}</div>
     ${many && minor ? `<button class="link more-members" data-act="more-members" data-n="${minor}"></button>` : ''}`;
+}
+
+// Pas dans la discussion : on joue quand même, sous son prénom (celui tapé pour entrer, déjà rempli).
+function outsidePicker(me) {
+  if (!ui.outsideForm) return `<button class="link outside-link" data-act="outside">${T('notInChat')}</button>`;
+  return `
+    <form class="join outside-form" data-form="outside">
+      <input name="name" data-input="outside-name" value="${esc(ui.outsideName ?? (me?.name || store.get('ctt-name') || ''))}" maxlength="24" placeholder="${T('yourName')}" autocomplete="given-name" aria-label="${T('yourName')}">
+      <button class="primary" type="submit">${T('playAnyway')}</button>
+    </form>
+    <p class="hint">${T('outsideHint')}</p>`;
 }
 
 // Filtre la liste sans la redessiner (pour ne pas perdre la saisie).
@@ -607,8 +621,8 @@ function lobbyScreen() {
     </section>` : ''}
 
     <h2>${T('whoAreYou')}</h2>
-    ${me?.author && !ui.pickName ? `
-    <div class="me-pick"><span>${T('youAre', esc(me.author))}</span><button class="link" data-act="change-name">${T('changeName')}</button></div>` : memberPicker(v, taken)}
+    ${(me?.author || me?.outside) && !ui.pickName ? `
+    <div class="me-pick"><span>${me.author ? T('youAre', esc(me.author)) : T('youAreOutside', esc(me.name))}</span><button class="link" data-act="change-name">${T('changeName')}</button></div>` : `${memberPicker(v, taken)}${outsidePicker(me)}`}
 
     <h2>${T('players')} <small>${v.players.filter(p => p.connected).length}</small></h2>
     ${playerList(v)}
@@ -639,7 +653,7 @@ function lobbyScreen() {
         <button class="primary big" data-act="start" ${v.canStart.ok ? '' : 'disabled'}>${T('start')}</button>
         ${v.canStart.ok ? '' : `<p class="hint">${esc(T(v.canStart.reason))}</p>`}
       </div>`
-    : `<p class="wait">${me?.author ? T('hostWillStart') : T('pickName')}</p>`}`;
+    : `<p class="wait">${me?.author || me?.outside ? T('hostWillStart') : T('pickName')}</p>`}`;
 }
 
 function bubble(r) {
@@ -694,7 +708,7 @@ function patchQuestion() {
   const v = view, r = v.round;
   for (const btn of $app.querySelectorAll('[data-act=vote]')) btn.classList.toggle('on', r.myVote === btn.dataset.author);
   $app.querySelector('.bubble').classList.toggle('blurred', !!r.blurred);
-  const shown = v.players.filter(p => p.author || p.voted).sort((a, b) => b.score - a.score);
+  const shown = v.players.filter(p => p.author || p.outside || p.voted).sort((a, b) => b.score - a.score);
   $app.querySelector('.mini').innerHTML = shown.map(p => `
     <li class="${p.voted ? 'voted' : ''} ${p.connected ? '' : 'off'}">
       <i aria-label="${p.voted ? T('voted') : T('notVoted')}"></i><span>${p.id === v.me ? T('youShort') : esc(nameOf(p).split(' ')[0])}</span><b>${p.score}</b>
@@ -868,7 +882,7 @@ function animateBoard() {
 function revealScreen() {
   const v = view, r = v.round;
   const ownerPlayer = v.players.find(p => p.author === r.answer);
-  const rows = v.players.filter(p => r.votes[p.id] || p.author).sort((a, b) => b.score - a.score);
+  const rows = v.players.filter(p => r.votes[p.id] || p.author || p.outside).sort((a, b) => b.score - a.score);
   return `
     <div class="hud"><span>${T('round', r.n, r.total)}</span></div>
     ${bubble(r)}
@@ -896,14 +910,14 @@ function revealScreen() {
 
 function endScreen() {
   const v = view;
-  const ranking = [...v.players].filter(p => p.author).sort((a, b) => b.score - a.score);
+  const ranking = [...v.players].filter(p => p.author || p.outside).sort((a, b) => b.score - a.score);
   const rank = p => 1 + ranking.filter(q => q.score > p.score).length;   // ex æquo : même rang
   return `
     ${homeLogo()}
     ${v.slides?.length ? `<h2>${T('moments')}</h2><section class="slideshow" data-slides></section>` : ''}
     <header class="brand small"><h1>${T('ranking')}</h1></header>
     <ol class="ranking">${ranking.map(p => `
-      <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(p.author)}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
+      <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(nameOf(p))}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
     <button class="big share-game" data-act="share-game">${T('shareGame')}</button>
     <h2>${T('portraits')}</h2>
     <div class="portraits">${v.portraits.map(x => `
@@ -986,7 +1000,8 @@ $app.addEventListener('click', async e => {
     render();
   }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
-  else if (act === 'claim') { ui.pickName = false; ui.memberQuery = ''; send({ t: 'claim', author: el.dataset.author }); }
+  else if (act === 'claim') { ui.pickName = false; ui.memberQuery = ''; ui.outsideForm = false; send({ t: 'claim', author: el.dataset.author }); }
+  else if (act === 'outside') { setUi({ outsideForm: true }); $app.querySelector('[data-form=outside] input')?.focus(); }
   else if (act === 'change-name') setUi({ pickName: true });
   else if (act === 'more-members') { ui.allMembers = !ui.allMembers; filterMembers(); }
   else if (act === 'vote') send({ t: 'vote', n: view.round.n, author: el.dataset.author });
@@ -1025,11 +1040,19 @@ $app.addEventListener('change', e => {
 
 $app.addEventListener('input', e => {
   if (e.target.dataset.input === 'member-search') { ui.memberQuery = e.target.value; filterMembers(); }
+  if (e.target.dataset.input === 'outside-name') ui.outsideName = e.target.value;
 });
 
 $app.addEventListener('submit', e => {
   e.preventDefault();
   if (e.target.dataset.form === 'join') join(joinCode(), new FormData(e.target).get('name') || '');
+  if (e.target.dataset.form === 'outside') {
+    const name = String(new FormData(e.target).get('name') || '').trim();
+    if (!name) return;
+    store.set('ctt-name', name);
+    ui.pickName = false; ui.outsideForm = false; ui.memberQuery = ''; ui.outsideName = undefined;
+    send({ t: 'outside', name });
+  }
 });
 
 

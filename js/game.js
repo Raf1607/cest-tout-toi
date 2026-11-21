@@ -123,7 +123,7 @@ export class Game {
     this.lang = DICT[analysis.lang] ? analysis.lang : 'fr';   // la langue de l'hôte, pour toute la partie
     this.code = code;
     this.hostId = hostId;
-    this.players = new Map();       // id → { id, author, score, connected, order }
+    this.players = new Map();       // id → { id, author, name, outside, score, connected, order }
     this.settings = { rounds: 10, seconds: 25, absent: true, photos: true, slideshow: true, wheel: true };   // tout coché par défaut
     this.phase = 'lobby';
     this.used = new Set();
@@ -161,17 +161,18 @@ export class Game {
 
   // L'hôte tranche ; onAdmit prévient l'app (envoi de l'état, ou refus et fermeture).
   admit(id, ok) {
-    if (!this.waiting.delete(id)) return;
-    if (ok) this.join(id);
-    else { this.refused.add(id); this.onAdmit?.(id, 'refused'); this.changed(); }
+    if (!this.waiting.has(id)) return;
+    if (ok) this.join(id);             // join() retire la demande et garde le prénom tapé
+    else { this.waiting.delete(id); this.refused.add(id); this.onAdmit?.(id, 'refused'); this.changed(); }
   }
 
   join(id) {
     this.allowed.add(id);
+    const name = this.waiting.get(id)?.name || '';
     this.waiting.delete(id);
     const p = this.players.get(id);
     if (p) p.connected = true;
-    else this.players.set(id, { id, author: null, score: 0, connected: true, order: this.players.size });
+    else this.players.set(id, { id, author: null, name, outside: false, score: 0, connected: true, order: this.players.size });
     this.changed();
   }
 
@@ -179,7 +180,7 @@ export class Game {
     if (this.waiting.delete(id)) return this.changed();
     const p = this.players.get(id);
     if (!p) return;
-    if (this.phase === 'lobby' && !p.author) this.players.delete(id);
+    if (this.phase === 'lobby' && !p.author && !p.outside) this.players.delete(id);
     else p.connected = false;
     this.checkVotes();
     this.changed();
@@ -194,7 +195,12 @@ export class Game {
       if (!owner || !owner.connected) {
         if (owner) owner.author = null;
         p.author = msg.author;
+        p.outside = false;
       }
+    } else if (msg.t === 'outside' && this.phase === 'lobby') {
+      // Pas dans la discussion : on joue quand même, sous son prénom, sans jamais être une réponse.
+      const name = String(msg.name || '').trim().slice(0, 24);
+      if (name) Object.assign(p, { author: null, outside: true, name });
     } else if (msg.t === 'vote' && this.phase === 'question' && msg.n === this.round.n
                && (this.round.options || this.options).includes(msg.author)) {      // on peut changer d'avis jusqu'à la fin
       this.round.first ??= id;           // le premier à voter, pour la roue
@@ -226,15 +232,19 @@ export class Game {
   }
 
   // Les noms proposés au vote : les joueurs, plus (en option) les membres absents de la partie.
+  // Si les joueurs ne sont presque pas dans la discussion, les absents sont toujours de la partie.
   candidates() {
-    const names = new Set([...this.players.values()].map(p => p.author).filter(Boolean));
-    if (this.settings.absent) for (const a of this.analysis.authors) if (a.tics.length) names.add(a.name);
+    const players = [...this.players.values()];
+    const names = new Set(players.map(p => p.author).filter(Boolean));
+    const owners = [...names].filter(n => this.member(n).tics.length).length;
+    const outsiders = players.some(p => p.outside && p.connected);
+    if (this.settings.absent || (outsiders && owners < 2)) for (const a of this.analysis.authors) if (a.tics.length) names.add(a.name);
     return [...names].sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
   canStart() {
     const present = [...this.players.values()].filter(p => p.connected);
-    if (present.some(p => !p.author)) return { ok: false, reason: 'needClaim' };
+    if (present.some(p => !p.author && !p.outside)) return { ok: false, reason: 'needClaim' };
     const owners = this.candidates().filter(n => this.member(n).tics.length);
     if (owners.length < 2) return { ok: false, reason: 'needTwo' };
     return { ok: true };
@@ -340,7 +350,7 @@ export class Game {
   // Après la réponse : le classement animé pendant 3 secondes, puis la suite toute seule.
   next() {
     const place = id => { const i = this.order.indexOf(id); return i < 0 ? this.order.length : i; };
-    const shown = [...this.players.values()].filter(p => p.author || this.round.votes[p.id]);
+    const shown = [...this.players.values()].filter(p => p.author || p.outside || this.round.votes[p.id]);
     const after = shown.sort((a, b) => b.score - a.score || place(a.id) - place(b.id)).map(p => p.id);
     this.ranking = { before: this.order.length ? this.order : after, after, deltas: this.round.deltas || {} };
     this.order = after;
@@ -437,7 +447,7 @@ export class Game {
   // Ce que voit le joueur `id`.
   view(id) {
     const players = [...this.players.values()].sort((a, b) => a.order - b.order).map(p => ({
-      id: p.id, author: p.author, score: p.score, connected: p.connected, host: p.id === this.hostId,
+      id: p.id, author: p.author, name: p.name, outside: !!p.outside, score: p.score, connected: p.connected, host: p.id === this.hostId,
       voted: this.phase === 'question' && !!this.round.votes[p.id],
     }));
     const v = { phase: this.phase, lang: this.lang, code: this.code, title: this.analysis.title, withMedia: !!this.analysis.withMedia, me: id, host: id === this.hostId, players, settings: this.settings };
@@ -472,7 +482,7 @@ export class Game {
         n: this.round.n, total: this.deck.length,
         rows: after.map(pid => {
           const p = this.players.get(pid);
-          return { id: pid, name: p.author || '', score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
+          return { id: pid, name: p.author || p.name || '', score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
         }),
       };
     }
@@ -484,7 +494,7 @@ export class Game {
     }
     if (this.phase === 'wheel') {
       const p = this.players.get(this.wheel.target);
-      v.wheel = { index: this.wheel.index, shielded: this.wheel.shielded, target: p?.author || '', mine: this.wheel.target === id };
+      v.wheel = { index: this.wheel.index, shielded: this.wheel.shielded, target: p?.author || p?.name || '', mine: this.wheel.target === id };
     }
     if (this.phase === 'end') {
       v.slides = this.slides();
