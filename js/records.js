@@ -62,9 +62,15 @@ export function memberStats(chat) {
   }
   if (prev && run >= RAFALE) get(prev.author).bursts++;
 
+  // Pour l'emoji préféré : combien de messages des autres le contiennent (pour mesurer s'il est marquant).
+  const allTexts = [...stats.values()].reduce((n, s) => n + s.texts, 0);
+  const allEmojis = new Map();
+  for (const s of stats.values()) for (const [e, n] of s.emojis) allEmojis.set(e, (allEmojis.get(e) || 0) + n);
   const out = new Map();
   for (const [name, s] of stats) {
     const fav = [...s.emojis].sort((a, b) => b[1] - a[1])[0];
+    // Part de ses messages avec cet emoji, rapportée à la même part chez les autres (lissée).
+    const lift = fav ? (fav[1] / Math.max(1, s.texts)) / ((allEmojis.get(fav[0]) - fav[1] + 1) / Math.max(1, allTexts - s.texts + 1)) : 0;
     out.set(name, {
       messages: s.messages,
       reply: s.replies.length >= 10 ? median(s.replies) : null,
@@ -81,7 +87,7 @@ export function memberStats(chat) {
       short: share(s.short, s.texts), shortCount: s.short,
       laughs: share(s.laughs, s.texts), laughCount: s.laughs,
       early: share(s.early, s.messages), earlyCount: s.early,
-      emoji: fav && fav[1] >= 5 ? { e: fav[0], n: fav[1] } : null,
+      emoji: fav && fav[1] >= 5 ? { e: fav[0], n: fav[1], lift } : null,
     });
   }
   return out;
@@ -106,6 +112,10 @@ const RECORDS = [
   { id: 'matinal', value: s => s.early, min: 0.03, need: s => s.earlyCount >= 5 },
 ];
 
+// À quel point un titre est marquant : l'écart avec le deuxième (×1,3 : faible, ×3 : moyen, ×10 : fort),
+// sur une échelle logarithmique pour qu'un écart énorme sur de petits chiffres n'écrase pas tout.
+const marked = ratio => Math.log2(Math.min(16, Number.isFinite(ratio) && ratio > 0 ? ratio : 16));
+
 // members : [{ name, stats }] (les noms proposés au vote) ; everyone : tous les membres de la discussion,
 // pour les records qui portent sur tout le groupe (le fantôme doit être le plus discret de tous, pas
 // seulement des joueurs). → cartes { owner, tic: { kind: 'record' | 'favori', … } }
@@ -122,13 +132,14 @@ export function pickRecords(members, everyone = members, lang = 'fr') {
     const clear = rec.low ? w.v <= (rec.ratio || 0.75) * r.v : w.v >= 1.3 * r.v && w.v >= (rec.min || 0);
     if (!clear || (rec.need && !rec.need(w.s)) || !members.some(m => m.name === w.name)) continue;
     const [text, detail] = L.records[rec.id];
-    cards.push({ owner: w.name, tic: { kind: 'record', id: rec.id, text, detail: detail(w, r, L.duration, L.pct, N), uses: 0, others: 0 } });
+    cards.push({ owner: w.name, score: marked(rec.low ? r.v / w.v : w.v / r.v), tic: { kind: 'record', id: rec.id, text, detail: detail(w, r, L.duration, L.pct, N), uses: 0, others: 0 } });
   }
-  // Emoji préféré : seulement s'il n'est celui de personne d'autre.
+  // Emoji préféré : seulement s'il n'est celui de personne d'autre. Il passe après les vrais records
+  // à écart égal.
   const favs = members.filter(m => m.stats?.emoji);
   for (const m of favs) {
     if (favs.some(o => o !== m && o.stats.emoji.e === m.stats.emoji.e)) continue;
-    cards.push({ owner: m.name, tic: { kind: 'favori', id: 'emoji', text: m.stats.emoji.e, detail: L.favDetail(m.stats.emoji.n), uses: 0, others: 0 } });
+    cards.push({ owner: m.name, score: 0.8 * marked(m.stats.emoji.lift || 1.3), tic: { kind: 'favori', id: 'emoji', text: m.stats.emoji.e, detail: L.favDetail(m.stats.emoji.n), uses: 0, others: 0 } });
   }
   return cards;
 }
@@ -196,7 +207,7 @@ export function cultMessages(chat, max = 8, lang = 'fr', scores = messageReactio
     out.push({ author, text, ...r });
   }
   return out.sort((a, b) => b.score - a.score).slice(0, max)
-    .map(({ author, text, reactions, emojis }) => ({ author, text, detail: L.cultDetail(reactions, emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')) }));
+    .map(({ author, text, reactions, score, emojis }) => ({ author, text, reactions, score, detail: L.cultDetail(reactions, emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')) }));
 }
 
 // Montage de fin : les photos les plus commentées, plus les stickers et GIF les plus envoyés du groupe.

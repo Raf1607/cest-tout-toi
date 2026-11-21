@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { parseChat } from '../js/whatsapp.js';
 import { analyze } from '../js/tics.js';
-import { Game, WHEEL, MAX_CHOICES } from '../js/game.js';
+import { Game, WHEEL, MAX_CHOICES, categoryOf } from '../js/game.js';
 import { readZipExport } from './zip-export.mjs';
 
 const name = 'Discussion WhatsApp avec Les Potes.txt';
@@ -24,13 +24,13 @@ game.handle('c', { t: 'claim', author: 'Inès' });
 game.handle('b', { t: 'start' });
 assert.equal(game.phase, 'lobby', 'seul l\'hôte lance la partie');
 assert.deepEqual(game.settings, { rounds: 10, seconds: 25, absent: true, photos: true, slideshow: true, wheel: true }, 'toutes les options cochées par défaut');
-game.handle('h', { t: 'settings', settings: { rounds: 6, seconds: 15, absent: false } });
+game.handle('h', { t: 'settings', settings: { rounds: 10, seconds: 15, absent: false } });
 game.handle('h', { t: 'start' });
 assert.equal(game.phase, 'question');
 assert.deepEqual(game.options, ['Inès', 'Julie Moreau', 'Karim B']);
 
 const owners = [];
-for (let n = 1; n <= 6; n++) {
+for (let n = 1; n <= 10; n++) {
   const v = game.view('b');
   assert.equal(v.round.answer, undefined, 'la réponse ne fuit pas pendant la question');
   const answer = game.round.card.owner;
@@ -54,7 +54,7 @@ for (let n = 1; n <= 6; n++) {
 assert.equal(game.phase, 'end');
 for (let i = 1; i < owners.length; i++) assert.notEqual(owners[i], owners[i - 1], 'jamais deux fois de suite le même');
 assert.deepEqual([...new Set(owners)].sort(), ['Inès', 'Julie Moreau', 'Karim B']);
-assert.equal(game.players.get('h').score, 12, '2 points par bonne réponse');
+assert.equal(game.players.get('h').score, 20, '2 points par bonne réponse');
 let expected = 0;
 for (const o of owners) expected = o === 'Inès' ? expected + 2 : Math.max(0, expected - 1);
 assert.equal(game.players.get('b').score, expected, '1 point en moins par mauvaise réponse, jamais sous zéro');
@@ -235,13 +235,13 @@ assert.equal(media.phase, 'end');
   clearTimeout(g.timer);
 
   // Question bonus : une manche de plus, une seule fois par partie.
-  g = setup(6);
-  assert.equal(g.deck.length, 6); assert.ok(g.spare, 'une carte en réserve');
+  g = setup(10);
+  assert.equal(g.deck.length, 10); assert.ok(g.spare, 'une carte en réserve');
   playThenSpin(g, 'extra');
-  assert.equal(g.deck.length, 7); assert.equal(g.spare, null);
+  assert.equal(g.deck.length, 11); assert.equal(g.spare, null);
   assert.ok(!WHEEL.map((_, i) => i).filter(i => WHEEL[i].id !== 'extra' || g.spare).some(i => WHEEL[i].id === 'extra'), 'plus de question bonus sur la roue');
-  g.index = 5; g.advance();
-  assert.equal(g.view('h').round.bonus, true); assert.equal(g.view('h').round.total, 7);
+  g.index = 9; g.advance();
+  assert.equal(g.view('h').round.bonus, true); assert.equal(g.view('h').round.total, 11);
   clearTimeout(g.timer);
 
   // −2 au premier, et bouclier : il bloque un malus jusqu'au tour de roue suivant.
@@ -276,8 +276,8 @@ assert.equal(media.phase, 'end');
   off.reveal(); off.next(); off.advance();
   assert.equal(off.phase, 'question', 'pas de roue quand elle est désactivée');
   clearTimeout(off.timer);
-  const last = setup(6); last.wheelChance = 1;
-  last.index = 5; last.ask(); last.reveal(); last.next(); last.advance();
+  const last = setup(10); last.wheelChance = 1;
+  last.index = 9; last.ask(); last.reveal(); last.next(); last.advance();
   assert.notEqual(last.phase, 'wheel', 'jamais de roue après la dernière manche');
   clearTimeout(last.timer);
 }
@@ -442,8 +442,10 @@ assert.equal(media.phase, 'end');
     assert.equal(played.length, 10);
     for (const name of ['Julie Moreau', 'Inès']) assert.ok(played.some(c => c.owner === name), `${name} est la réponse d'au moins une manche`);
     assert.ok(played.some(c => c.tic.kind === 'culte') && played.some(c => c.tic.kind === 'record'), 'titres et culte joués');
-    assert.equal(played.filter(c => c.tic.kind === 'photo').length, 2, 'deux photos sur dix manches');
-    assert.ok(played.filter(c => c.tic.kind === 'message').length <= 2, 'pas plus de deux « qui a écrit ça ? »');
+    const by = cat => played.filter(c => categoryOf(c.tic.kind) === cat).length;
+    assert.deepEqual([by('message'), by('titre'), by('photo'), by('tic')], [3, 2, 2, 3], 'répartition sur dix manches : 3 messages, 2 titres, 2 photos, 3 tics');
+    assert.ok(!played.some(c => c.tic.kind === 'ponct'), 'jamais de ponctuation');
+    assert.ok(played.filter(c => c.tic.kind === 'debut' || c.tic.kind === 'fin').length <= 1, 'un début ou une fin au plus');
     assert.ok(['Julie Moreau', 'Inès'].includes(played[0].owner), 'la première question porte sur un joueur');
     assert.ok(played.every((c, i) => !i || c.owner !== played[i - 1].owner), 'jamais deux fois de suite le même');
     assert.ok(m.deck.every((c, i, d) => !i || i < 10 || c.tic !== d[i - 1].tic), 'réserve distincte');

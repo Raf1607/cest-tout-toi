@@ -468,8 +468,9 @@ function analyzeAt(chat, files, level, lang) {
     if (groups.size < 2) return;
     // Un message qui a fait réagir le groupe passe devant : chaque emoji en réaction vaut une tournure.
     const r = reacted.get(m.author + '\n' + m.text);
-    const score = [...groups.values()].reduce((x, [v]) => x + v, 0) + 1.5 * Math.min(r?.reactions || 0, 8) + 0.3 * Math.min(r?.score || 0, 10) + Math.random();
-    typical[a].push({ text: m.text, score, reactions: r?.reactions || 0, emojis: r?.emojis || [], groups: [...groups.keys()].sort().join('|'), found: shown.length ? shown : [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
+    const typicality = [...groups.values()].reduce((x, [v]) => x + v, 0);
+    const score = typicality + 1.5 * Math.min(r?.reactions || 0, 8) + 0.3 * Math.min(r?.score || 0, 10) + Math.random();
+    typical[a].push({ text: m.text, score, typicality, replies: r?.score || 0, reactions: r?.reactions || 0, emojis: r?.emojis || [], groups: [...groups.keys()].sort().join('|'), found: shown.length ? shown : [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
   });
   typical.forEach((list, a) => {
     list.sort((x, y) => y.score - x.score);
@@ -482,6 +483,7 @@ function analyzeAt(chat, files, level, lang) {
     for (const t of kept) {
       picked[a].push({
         key: '=' + t.text, kind: 'message', text: t.text, uses: 0, others: 0, topOther: null, lift: 0,
+        reactions: t.reactions, buzz: t.replies, typicality: Math.round(t.typicality * 10) / 10,
         detail: L.typical(names[a], t.found.slice(0, 3)) + (t.reactions >= 2 ? ' ' + L.typicalReacted(t.reactions, t.emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')) : ''),
       });
     }
@@ -491,8 +493,8 @@ function analyzeAt(chat, files, level, lang) {
     .map((name, a) => ({
       name,
       messages: perAll[a],
-      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null, detail = null }) =>
-        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of, detail })),
+      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null, detail = null, reactions, buzz, typicality }) =>
+        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of, detail, ...(kind === 'message' ? { reactions, buzz, typicality } : {}) })),
       // Photos : celles qui ont le plus fait réagir d'abord (score de réaction), au hasard à égalité.
       photos: shuffle(photos[a].map(file => ({ file, score: shots.get(file)?.score || 0 })))
         .sort((x, y) => y.score - x.score).slice(0, 40),

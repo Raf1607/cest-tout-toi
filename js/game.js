@@ -4,7 +4,7 @@
 import { pickRecords } from './records.js';
 import { DICT } from './i18n.js';
 
-export const ROUNDS = [6, 10, 15, 20];
+export const ROUNDS = [10, 15, 20];
 export const SECONDS = [15, 25, 40];
 const GAIN = 2, LOSS = 1;   // points par bonne et par mauvaise réponse (jamais en dessous de zéro)
 const AFTER_FIRST_VOTE = 7000;   // dès le premier vote, il ne reste que ce temps aux autres
@@ -47,142 +47,162 @@ function shuffle(a) {
 }
 
 const ticId = (owner, t) => owner + '|' + (t.id || t.file || t.text);
-const FAMILY = { expr: 'mots', mot: 'mots', ponct: 'mots', debut: 'mots', fin: 'mots', emoji: 'emoji', sticker: 'media', gif: 'media', habitude: 'habitude', message: 'message' };
+// Répartition des manches par catégorie. Sans l'option photos (ou sans photos dans l'export), leurs
+// manches vont aux messages et aux titres. Une catégorie qui manque de cartes passe ses manches à la
+// suivante (messages → titres → photos → tics), puis on complète avec ce qui reste.
+const SHARES = {
+  10: { message: 3, titre: 2, photo: 2, tic: 3 },
+  15: { message: 5, titre: 3, photo: 3, tic: 4 },
+  20: { message: 6, titre: 4, photo: 4, tic: 6 },
+};
+const SHARES_NO_PHOTO = {
+  10: { message: 4, titre: 3, photo: 0, tic: 3 },
+  15: { message: 7, titre: 4, photo: 0, tic: 4 },
+  20: { message: 8, titre: 6, photo: 0, tic: 6 },
+};
+const CATEGORIES = ['message', 'titre', 'photo', 'tic'];
+const CULTS = { 10: 1, 15: 2, 20: 2 };            // messages cultes, s'il y en a assez
+const MESSAGES_PER_PERSON = 2;
+// Tics : les plus parlants d'abord. La ponctuation n'est jamais posée ; début et fin : un en tout.
+const TIC_RANK = { sticker: 0, gif: 0, expr: 1, emoji: 2, habitude: 3, mot: 4, debut: 5, fin: 5 };
+const PRESENT_BOOST = 3;                           // les joueurs présents passent devant les absents
+export const categoryOf = kind => (kind === 'message' || kind === 'culte' ? 'message'
+  : kind === 'record' || kind === 'favori' ? 'titre' : kind === 'photo' ? 'photo' : 'tic');
 
-// Pour varier les questions, on alterne les familles de tics de chacun (mots, emoji, sticker/GIF,
-// habitude), en prenant à chaque fois le meilleur restant de la famille.
-function varied(tics) {
-  const families = new Map();
-  for (const t of tics) {
-    const f = FAMILY[t.kind] || 'mots';
-    if (!families.has(f)) families.set(f, []);
-    families.get(f).push(t);
+// Toutes les questions possibles, par catégorie, avec leur qualité q (plus c'est haut, mieux c'est).
+// Celles déjà jouées lors des parties précédentes sont écartées, sauf s'il ne reste rien d'autre.
+function candidates({ members, cults, records, rounds, used, photoText }) {
+  const fresh = list => { const f = list.filter(c => !used.has(ticId(c.owner, c.tic))); return f.length ? f : list; };
+  const names = new Set(members.map(m => m.name));
+  const out = { message: [], titre: [], photo: [], tic: [] };
+
+  // Messages : les cultes (les plus commentés du groupe) d'abord, puis les « qui a écrit ça ? » triés
+  // par réactions, puis par typicité.
+  const cultCards = fresh(cults.filter(c => names.has(c.author)).map(c => ({ owner: c.author, q: 1000 + (c.score || 0),
+    tic: { kind: 'culte', id: 'culte:' + c.text, text: c.text, detail: c.detail, uses: 0, others: 0 } })));
+  out.message.push(...cultCards.slice(0, CULTS[rounds] || 1));
+  const quoted = new Set(cults.map(c => c.text));
+  out.message.push(...fresh(members.flatMap(m => m.tics.filter(t => t.kind === 'message' && !quoted.has(t.text))
+    .map(t => ({ owner: m.name, q: 10 * Math.min(t.reactions || 0, 10) + (t.typicality || 1) + Math.random() * 0.5, tic: t })))));
+
+  // Titres : tirés au hasard, d'autant plus souvent qu'ils sont marquants.
+  out.titre = fresh(records.map(c => ({ ...c, q: c.score || 1 })));
+
+  // Photos : les plus commentées.
+  if (photoText) {
+    out.photo = fresh(members.flatMap(m => (m.photos || []).map(p => (typeof p === 'string' ? { file: p, score: 0 } : p))
+      .map(p => ({ owner: m.name, q: 1 + p.score + Math.random() * 0.5,
+        tic: { kind: 'photo', text: photoText, file: p.file, uses: m.photoCount || m.photos.length, others: 0, topOther: null, example: null } }))));
   }
-  const out = [];
-  while (families.size) {
-    for (const [f, list] of families) {
-      out.push(list.shift());
-      if (!list.length) families.delete(f);
-    }
-  }
+
+  // Tics : le sticker ou GIF fétiche, puis les expressions, l'emoji, les habitudes, les mots.
+  out.tic = fresh(members.flatMap(m => m.tics.filter(t => t.kind in TIC_RANK)
+    .map((t, i) => ({ owner: m.name, q: 10 * (6 - TIC_RANK[t.kind]) + Math.max(0, 12 - i) + Math.random() * 4, tic: t }))));
   return out;
 }
 
-// File de questions d'un membre : ses tics en alternant les familles (le meilleur restant de chacune),
-// les cinq premiers mélangés pour varier d'une partie à l'autre, son sticker ou GIF fétiche tôt.
-// Ceux déjà joués lors des parties précédentes sont écartés (sauf s'il ne reste rien d'autre).
-function queueOf(a, used) {
-  const fresh = a.tics.filter(t => !used.has(ticId(a.name, t)));
-  let list = varied(fresh.length ? fresh : a.tics.slice());
-  list = [...shuffle(list.slice(0, 5)), ...shuffle(list.slice(5))];
-  const fav = list.findIndex(t => t.kind === 'sticker' || t.kind === 'gif');
-  if (fav > 2) list.splice(2, 0, list.splice(fav, 1)[0]);
-  return list;
-}
-
-// Composition de la partie (rounds manches, plus une carte de réserve pour la « Question bonus ») :
-//  1. Des manches réservées, réparties dans la partie : le message culte, les titres (environ une
-//     manche sur trois en tout) et, avec l'option photos, les photos qui ont le plus fait réagir.
-//  2. Les autres manches portent sur les tics. Chaque joueur présent est la réponse d'au moins une
-//     manche (s'il a des tics et qu'il y a assez de manches), et les joueurs présents ont environ deux
-//     manches sur trois quand on joue aussi sur les absents. Sinon, chacun à son tour.
-//  3. Pas trop de questions du même type, et jamais deux fois de suite la même personne.
-// specials : cartes réservées { owner, tic } ; present : noms des joueurs présents.
-export function buildDeck({ owners, specials, present, rounds, used }) {
-  const total = rounds + 1;
-  specials = specials.slice(0, rounds);
-  const queues = new Map(owners.map(a => [a.name, queueOf(a, used)]));
-  const count = new Map(owners.map(a => [a.name, 0]));
-  for (const c of specials) if (count.has(c.owner)) count.set(c.owner, count.get(c.owner) + 1);
-
-  // Plafonds par type : au plus deux « qui a écrit ça ? » sur dix manches, un quart des manches pour les autres.
-  const kinds = new Map();
-  const cap = kind => (kind === 'message' ? Math.max(1, Math.round(rounds / 5)) : Math.max(2, Math.ceil(rounds / 4)));
-  const take = name => {
-    const q = queues.get(name);
-    let i = q.findIndex(t => (kinds.get(t.kind) || 0) < cap(t.kind));
-    if (i < 0) i = 0;
-    const tic = q.splice(i, 1)[0];
-    kinds.set(tic.kind, (kinds.get(tic.kind) || 0) + 1);
-    count.set(name, count.get(name) + 1);
-    return { owner: name, tic };
+// Composition de la partie : rounds manches, plus une carte de réserve pour la « Question bonus ».
+//  1. Chaque catégorie prend ses manches (voir SHARES) : les meilleures cartes, les joueurs présents
+//     d'abord, en variant les personnes ; les titres sont tirés au sort selon leur score.
+//  2. Chaque joueur présent est la réponse d'au moins une manche s'il a de quoi (on remplace au besoin
+//     la carte la moins bonne de quelqu'un qui en a plusieurs, ou d'un absent).
+//  3. Ordre : jamais deux fois de suite la même personne, les catégories alternent, et la première
+//     question porte sur un joueur présent.
+export function buildDeck({ members, cults = [], records = [], present, rounds, used, photos = false, photoText = 'photo' }) {
+  const pool = candidates({ members, cults, records, rounds, used, photoText: photos ? photoText : null });
+  const shares = (photos && pool.photo.length ? SHARES : SHARES_NO_PHOTO)[rounds] || SHARES_NO_PHOTO[10];
+  const chosen = [], count = new Map(), kinds = new Map();
+  const n = name => count.get(name) || 0;
+  const perOwner = { message: MESSAGES_PER_PERSON, titre: Math.ceil(rounds / 10), photo: Math.ceil(rounds / 10), tic: 2 };
+  const ticCap = kind => (kind === 'debut' || kind === 'fin' ? 1 : Math.max(2, Math.ceil(shares.tic / 2)));
+  const kindKey = kind => (kind === 'fin' ? 'debut' : kind);
+  const value = c => c.q * (present.has(c.owner) ? PRESENT_BOOST : 1) / (1 + n(c.owner));
+  const allowed = (c, cat, relax) => {
+    if (!relax && chosen.filter(x => x.cat === cat && x.owner === c.owner).length >= perOwner[cat]) return false;
+    if (cat === 'tic' && !relax && (kinds.get(kindKey(c.tic.kind)) || 0) >= ticCap(c.tic.kind)) return false;
+    return true;
   };
-  // Le membre qui a le moins de manches jusqu'ici (au hasard à égalité).
-  const next = names => {
-    const open = shuffle(names.filter(n => queues.get(n).length));
-    if (!open.length) return null;
-    return open.reduce((best, n) => (count.get(n) < count.get(best) ? n : best));
+  const add = (c, cat) => {
+    pool[cat].splice(pool[cat].indexOf(c), 1);
+    chosen.push({ owner: c.owner, tic: c.tic, q: c.q, cat });
+    count.set(c.owner, n(c.owner) + 1);
+    if (cat === 'tic') kinds.set(kindKey(c.tic.kind), (kinds.get(kindKey(c.tic.kind)) || 0) + 1);
+  };
+  const pickOne = (cat, relax) => {
+    const open = pool[cat].filter(c => allowed(c, cat, relax));
+    if (!open.length) return false;
+    let c;
+    if (cat === 'titre') {   // tirage pondéré par le score
+      let r = Math.random() * open.reduce((sum, x) => sum + value(x), 0);
+      c = open.find(x => (r -= value(x)) < 0) || open[open.length - 1];
+    } else c = open.reduce((best, x) => (value(x) > value(best) ? x : best));
+    add(c, cat);
+    return true;
   };
 
-  const here = owners.map(a => a.name).filter(n => present.has(n));
-  const away = owners.map(a => a.name).filter(n => !present.has(n));
-  const wanted = total - specials.length;
-  // Part des joueurs présents : deux manches sur trois, au moins une chacun si possible.
-  const hereShare = away.length ? Math.min(wanted, Math.max(Math.round(wanted * 2 / 3), here.length)) : wanted;
-  const normal = [];
-  while (normal.length < wanted) {
-    const herePicked = normal.filter(c => present.has(c.owner)).length;
-    const fromHere = herePicked < hereShare;
-    const name = next(fromHere ? here : away) || next(fromHere ? away : here);
-    if (!name) break;
-    normal.push(take(name));
+  let carry = 0;
+  for (const cat of CATEGORIES) {
+    const want = shares[cat] + carry;
+    let got = 0;
+    while (got < want && pickOne(cat, false)) got++;
+    carry = want - got;
+  }
+  // Il manque encore des manches : on complète avec ce qui reste, dans le même ordre, sans plafonds.
+  for (const relax of [false, true]) for (const cat of CATEGORIES) while (carry > 0 && pickOne(cat, relax)) carry--;
+
+  // Chaque joueur présent a sa question, s'il a de quoi.
+  for (const name of shuffle([...present])) {
+    if (n(name)) continue;
+    for (const cat of ['tic', 'photo', 'message', 'titre']) {
+      const mine = pool[cat].filter(c => c.owner === name).sort((x, y) => y.q - x.q)[0];
+      const victims = chosen.filter(c => c.cat === cat && (!present.has(c.owner) || n(c.owner) >= 2))
+        .sort((x, y) => (present.has(x.owner) - present.has(y.owner)) || x.q - y.q);
+      if (!mine || !victims.length) continue;
+      const v = victims[0];
+      chosen.splice(chosen.indexOf(v), 1);
+      count.set(v.owner, n(v.owner) - 1);
+      if (cat === 'tic') kinds.set(kindKey(v.tic.kind), kinds.get(kindKey(v.tic.kind)) - 1);
+      add(mine, cat);
+      break;
+    }
   }
 
-  // Carte de réserve : celle d'un membre qui a déjà d'autres manches (un absent de préférence), pour
-  // qu'aucun joueur ne perde sa seule question si la roue ne tombe pas sur « Question bonus ».
-  let spare = null;
-  if (specials.length + normal.length > rounds) {
-    const weight = c => count.get(c.owner) * 2 + (present.has(c.owner) ? 0 : 1) + Math.random();
-    const i = normal.reduce((bi, c, k) => (weight(c) > weight(normal[bi]) ? k : bi), 0);
-    spare = normal.splice(i, 1)[0];
-  }
-  // Ordre : plusieurs essais au hasard, on garde le premier sans deux fois de suite la même personne.
+  // Ordre : plusieurs essais au hasard, on garde le meilleur.
   let best = null;
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const deck = arrange(specials, normal, rounds, present);
-    if (spare) deck.push(spare);
-    const repeats = deck.filter((c, i) => i && c.owner === deck[i - 1].owner).length;
-    if (!best || repeats < best.repeats) best = { deck, repeats };
-    if (!repeats) break;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const deck = arrange(chosen, present);
+    const cost = deck.reduce((sum, c, i) => sum + (i && c.owner === deck[i - 1].owner ? 100 : 0) + (i && c.cat === deck[i - 1].cat ? 1 : 0), 0)
+      + (present.size && !present.has(deck[0]?.owner) ? 10 : 0);
+    if (!best || cost < best.cost) best = { deck, cost };
+    if (cost === 0) break;
   }
-  return best.deck;
+  const deck = best?.deck || [];
+  // Carte de réserve : un tic (sinon ce qui reste) d'une autre personne que la dernière manche.
+  const last = deck[deck.length - 1]?.owner;
+  for (const cat of ['tic', 'message', 'titre', 'photo']) {
+    const open = pool[cat].filter(c => c.owner !== last);
+    if (!open.length) continue;
+    const c = open.reduce((b, x) => (value(x) > value(b) ? x : b));
+    deck.push({ owner: c.owner, tic: c.tic, cat });
+    break;
+  }
+  return deck.map(({ owner, tic }) => ({ owner, tic }));
 }
 
-// Un essai d'ordre : les manches réservées réparties régulièrement (jamais en premier), les autres au
-// hasard, une question sur un joueur présent pour commencer.
-function arrange(specials, normal, rounds, present) {
-  const length = specials.length + normal.length;
-  const played = Math.min(rounds, length);
-  const slots = new Map();
-  shuffle(specials.slice()).forEach((c, i) => {
-    let at = Math.floor(((i + 0.5 + (Math.random() - 0.5) * 0.6) * played) / specials.length);
-    at = Math.min(played - 1, Math.max(played > 1 ? 1 : 0, at));
-    while (slots.has(at)) at = (at + 1) % played;
-    slots.set(at, c);
-  });
-  const pool = shuffle(normal.slice());
+// Un essai d'ordre : au hasard, en évitant la même personne et la même catégorie deux fois de suite,
+// avec un joueur présent pour commencer.
+function arrange(cards, present) {
+  const pool = shuffle(cards.slice());
   const deck = [];
-  for (let i = 0; i < length && (slots.has(i) || pool.length); i++) {
-    if (slots.has(i)) { deck.push(slots.get(i)); continue; }
-    const prev = deck[i - 1]?.owner, after = slots.get(i + 1)?.owner;
-    let j = i === 0 ? pool.findIndex(c => present.has(c.owner) && c.owner !== after) : -1;
-    if (j < 0) j = pool.findIndex(c => c.owner !== prev && c.owner !== after);
-    if (j < 0) j = pool.findIndex(c => c.owner !== prev);
+  while (pool.length) {
+    const prev = deck[deck.length - 1];
+    const tests = deck.length ? [c => c.owner !== prev.owner && c.cat !== prev.cat, c => c.owner !== prev.owner]
+      : [c => present.has(c.owner) && c.cat !== 'photo', c => present.has(c.owner)];
+    let j = -1;
+    for (const t of tests) if ((j = pool.findIndex(t)) >= 0) break;
     deck.push(pool.splice(Math.max(0, j), 1)[0]);
   }
   return deck;
-}
-
-// Photos à mettre en question : la plus commentée de chacun, puis les meilleures du groupe, en
-// variant les personnes. Une photo sans aucune réaction ne passe qu'à défaut.
-function pickPhotos(members, used, max, text) {
-  const best = members.map(a => (a.photos || [])
-    .map(p => (typeof p === 'string' ? { file: p, score: 0 } : p))
-    .filter(p => !used.has(a.name + '|' + p.file))
-    .map(p => ({ owner: a.name, score: p.score + Math.random() * 0.5, tic: { kind: 'photo', text, file: p.file, uses: a.photoCount || a.photos.length, others: 0, topOther: null, example: null } })));
-  const firsts = shuffle(best.filter(l => l.length).map(l => l.shift())).sort((x, y) => y.score - x.score);
-  const rest = best.flat().sort((x, y) => y.score - x.score);
-  return [...firsts, ...rest].slice(0, max).map(({ owner, tic }) => ({ owner, tic }));
 }
 
 // Image ou vidéo à montrer pour un tic (sticker, GIF, photo) ; id = nom du fichier dans l'export.
@@ -326,34 +346,15 @@ export class Game {
 
   start() {
     this.options = this.candidates();
-    const owners = this.options.map(n => this.member(n)).filter(a => a.tics.length);
     const present = new Set([...this.players.values()].filter(p => p.connected).map(p => p.author).filter(n => this.options.includes(n)));
     const rounds = this.settings.rounds;
-    // Manches réservées : le message culte (celui qui a le plus fait réagir) et les titres, environ une
-    // manche sur trois en tout ; les vrais records avant les emojis préférés, ceux des joueurs présents
-    // d'abord, sans redire un emoji déjà dans les tics de son propriétaire.
+    // Titres (« qui répond le plus vite ? »…), sans redire un emoji déjà dans les tics de son propriétaire.
     this.records = pickRecords(this.options.map(name => ({ name, stats: this.member(name).stats })), this.analysis.authors, this.lang)
       .filter(c => c.tic.kind !== 'favori' || !this.member(c.owner).tics.some(t => t.text === c.tic.text));
-    const fresh = this.records.filter(c => !this.used.has(ticId(c.owner, c.tic)));
-    const pool = fresh.length ? fresh : this.records.slice();
-    const rank = c => (c.tic.kind === 'record' ? 0 : 2) + (present.has(c.owner) ? 0 : 1);
-    const titles = shuffle(pool.slice()).sort((x, y) => rank(x) - rank(y));
-    const specials = [];
-    const cult = (this.analysis.cults || []).find(c => this.options.includes(c.author) && !this.used.has(c.author + '|culte:' + c.text));
-    if (cult) specials.push({ owner: cult.author, tic: { kind: 'culte', id: 'culte:' + cult.text, text: cult.text, detail: cult.detail, uses: 0, others: 0 } });
-    // Pas plus d'un titre par personne sur dix manches, pour varier les gagnants.
-    const perOwner = new Map(), maxTitles = Math.max(1, Math.round(rounds / 3)) - specials.length;
-    for (const c of titles) {
-      if (specials.length - (cult ? 1 : 0) >= maxTitles) break;
-      if ((perOwner.get(c.owner) || 0) >= Math.ceil(rounds / 10)) continue;
-      perOwner.set(c.owner, (perOwner.get(c.owner) || 0) + 1);
-      specials.push(c);
-    }
-    // Photos (option) : environ une manche sur cinq, les plus commentées.
-    if (this.settings.photos) {
-      specials.push(...pickPhotos(this.options.map(n => this.member(n)), this.used, Math.max(1, Math.round(rounds / 5)), DICT[this.lang].thisPhoto));
-    }
-    this.deck = buildDeck({ owners, specials, present, rounds, used: this.used });
+    this.deck = buildDeck({
+      members: this.options.map(n => this.member(n)), cults: this.analysis.cults || [], records: this.records,
+      present, rounds, used: this.used, photos: this.settings.photos, photoText: DICT[this.lang].thisPhoto,
+    });
     this.spare = this.deck.length > rounds ? this.deck.pop() : null;
     for (const p of this.players.values()) p.score = 0;
     this.index = 0;

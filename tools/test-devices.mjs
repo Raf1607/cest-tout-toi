@@ -44,7 +44,7 @@ const SCENARIOS = [
     players: [device('iPhone SE', 'iPhone SE'), device('Pixel 7', 'Pixel 7'), device('Firefox Android', 'firefox')] },
   { name: 'en-android-hote', locale: 'en-US', zip: 'WhatsApp Chat - The Crew (with media).zip', outsider: 2,
     players: [device('Galaxy S9+', 'Galaxy S9+'), device('iPhone 15 Pro Max', 'iPhone 15 Pro Max'), device('Galaxy Tab S9', 'Galaxy Tab S9')] },
-  { name: 'fr-txt-ipad', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (iPhone).txt', rounds: 6, quitFromLobby: true,
+  { name: 'fr-txt-ipad', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (iPhone).txt', rounds: 10, quitFromLobby: true,
     players: [device('iPad Mini', 'iPad Mini'), device('Galaxy A55', 'Galaxy A55')] },
 ];
 
@@ -106,7 +106,7 @@ async function play(sc) {
     await host.page.waitForSelector('.qr[data-code]', { timeout: 60000 });
     const code = await host.page.getAttribute('.qr[data-code]', 'data-code');
     console.log(`  code ${code}`);
-    await host.page.click('[data-act="set"][data-key="rounds"][data-value="6"]');
+    await host.page.click('[data-act="set"][data-key="rounds"][data-value="10"]');
     await host.page.click('[data-act="set"][data-key="seconds"][data-value="15"]');
 
     // Les invités suivent le lien, donnent leur prénom ; l'hôte les accepte.
