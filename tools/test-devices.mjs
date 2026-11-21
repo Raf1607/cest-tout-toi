@@ -7,6 +7,7 @@
 //   node tools/test-devices.mjs            → captures dans /tmp/whoisbro-devices
 //   node tools/test-devices.mjs --headed   → on voit les fenêtres
 import { chromium, webkit, firefox, devices } from 'playwright';
+import './samples.mjs';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';

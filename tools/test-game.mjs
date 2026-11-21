@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { parseChat } from '../js/whatsapp.js';
 import { analyze } from '../js/tics.js';
 import { Game, WHEEL, MAX_CHOICES, categoryOf } from '../js/game.js';
+import { TUNING } from '../js/tuning.js';
 import { readZipExport } from './zip-export.mjs';
+import './samples.mjs';
 
 const name = 'Discussion WhatsApp avec Les Potes.txt';
 const analysis = analyze(parseChat(readFileSync(new URL('../samples/' + name, import.meta.url), 'utf8'), name));
@@ -425,7 +427,7 @@ assert.equal(media.phase, 'end');
 }
 
 // Composition de la partie : chaque joueur présent a sa question, la réserve n'est la seule question
-// de personne, les photos sont les plus commentées, les titres et le culte sont bien joués.
+// de personne, les photos sont les plus commentées, chaque catégorie reste entre son plancher et son plafond.
 {
   const shots = media.analysis.authors.flatMap(a => a.photos);
   const best = Math.max(...shots.map(p => p.score));
@@ -441,9 +443,11 @@ assert.equal(media.phase, 'end');
     const played = m.deck.slice(0, 10);
     assert.equal(played.length, 10);
     for (const name of ['Julie Moreau', 'Inès']) assert.ok(played.some(c => c.owner === name), `${name} est la réponse d'au moins une manche`);
-    assert.ok(played.some(c => c.tic.kind === 'culte') && played.some(c => c.tic.kind === 'record'), 'titres et culte joués');
+    assert.ok(played.some(c => c.tic.kind === 'culte'), 'le message culte est joué');
     const by = cat => played.filter(c => categoryOf(c.tic.kind) === cat).length;
-    assert.deepEqual([by('message'), by('titre'), by('photo'), by('tic')], [3, 2, 2, 3], 'répartition sur dix manches : 3 messages, 2 titres, 2 photos, 3 tics');
+    for (const [cat, [lo, hi]] of Object.entries(TUNING.bounds[10])) assert.ok(by(cat) >= lo && by(cat) <= hi, `${cat} : entre ${lo} et ${hi} manches sur dix (${by(cat)})`);
+    const per = new Map(); for (const c of played) per.set(c.owner, (per.get(c.owner) || 0) + 1);
+    assert.ok(Math.max(...per.values()) <= Math.max(3, Math.ceil(10 / per.size)), 'personne n\'est la réponse de plus de 3 manches sur dix');
     assert.ok(!played.some(c => c.tic.kind === 'ponct'), 'jamais de ponctuation');
     assert.ok(played.filter(c => c.tic.kind === 'debut' || c.tic.kind === 'fin').length <= 1, 'un début ou une fin au plus');
     assert.ok(['Julie Moreau', 'Inès'].includes(played[0].owner), 'la première question porte sur un joueur');

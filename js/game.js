@@ -2,6 +2,8 @@
 // téléphone reçoit seulement ce qu'il doit afficher (jamais la réponse avant la révélation).
 
 import { pickRecords } from './records.js';
+import { TUNING as T } from './tuning.js';
+import { score } from './scoring.js';
 import { DICT } from './i18n.js';
 
 export const ROUNDS = [10, 15, 20];
@@ -47,110 +49,132 @@ function shuffle(a) {
 }
 
 const ticId = (owner, t) => owner + '|' + (t.id || t.file || t.text);
-// Répartition des manches par catégorie. Sans l'option photos (ou sans photos dans l'export), leurs
-// manches vont aux messages et aux titres. Une catégorie qui manque de cartes passe ses manches à la
-// suivante (messages → titres → photos → tics), puis on complète avec ce qui reste.
-const SHARES = {
-  10: { message: 3, titre: 2, photo: 2, tic: 3 },
-  15: { message: 5, titre: 3, photo: 3, tic: 4 },
-  20: { message: 6, titre: 4, photo: 4, tic: 6 },
-};
-const SHARES_NO_PHOTO = {
-  10: { message: 4, titre: 3, photo: 0, tic: 3 },
-  15: { message: 7, titre: 4, photo: 0, tic: 4 },
-  20: { message: 8, titre: 6, photo: 0, tic: 6 },
-};
+// Catégories de questions : messages (« qui a écrit ça ? » et cultes), titres (records, habitudes,
+// emoji préféré : les superlatifs), photos, tics (expressions, emojis, stickers et GIF fétiches…).
 const CATEGORIES = ['message', 'titre', 'photo', 'tic'];
-const CULTS = { 10: 1, 15: 2, 20: 2 };            // messages cultes, s'il y en a assez
-const MESSAGES_PER_PERSON = 2;
-// Tics : les plus parlants d'abord. La ponctuation n'est jamais posée ; début et fin : un en tout.
-const TIC_RANK = { sticker: 0, gif: 0, expr: 1, emoji: 2, habitude: 3, mot: 4, debut: 5, fin: 5 };
-const PRESENT_BOOST = 3;                           // les joueurs présents passent devant les absents
 export const categoryOf = kind => (kind === 'message' || kind === 'culte' ? 'message'
-  : kind === 'record' || kind === 'favori' ? 'titre' : kind === 'photo' ? 'photo' : 'tic');
+  : kind === 'record' || kind === 'favori' || kind === 'habitude' ? 'titre' : kind === 'photo' ? 'photo' : 'tic');
 
-// Toutes les questions possibles, par catégorie, avec leur qualité q (plus c'est haut, mieux c'est).
-// Celles déjà jouées lors des parties précédentes sont écartées, sauf s'il ne reste rien d'autre.
-function candidates({ members, cults, records, rounds, used, photoText }) {
+// Toutes les questions possibles, par catégorie, chacune avec son score commun q (0 à 1, js/scoring.js)
+// et un petit tirage au sort j (pour que deux parties ne se ressemblent pas). Celles déjà jouées lors des
+// parties précédentes sont écartées, sauf s'il ne reste rien d'autre.
+function candidates({ members, cults, records, used, photoText }) {
   const fresh = list => { const f = list.filter(c => !used.has(ticId(c.owner, c.tic))); return f.length ? f : list; };
   const names = new Set(members.map(m => m.name));
   const out = { message: [], titre: [], photo: [], tic: [] };
+  const react = (n, k) => 1 - Math.exp(-n / k);
 
-  // Messages : les cultes (les plus commentés du groupe) d'abord, puis les « qui a écrit ça ? » triés
-  // par réactions, puis par typicité.
-  const cultCards = fresh(cults.filter(c => names.has(c.author)).map(c => ({ owner: c.author, q: 1000 + (c.score || 0),
-    tic: { kind: 'culte', id: 'culte:' + c.text, text: c.text, detail: c.detail, uses: 0, others: 0 } })));
-  out.message.push(...cultCards.slice(0, CULTS[rounds] || 1));
+  // Messages cultes (ceux qui ont le plus fait réagir) et « qui a écrit ça ? ».
+  out.message.push(...fresh(cults.filter(c => names.has(c.author)).map(c => ({ owner: c.author,
+    q: score(T.fun.culte, 0.8, react(c.reactions || 3, 4), 1),
+    tic: { kind: 'culte', id: 'culte:' + c.text, text: c.text, detail: c.detail, uses: 0, others: 0 } }))));
   const quoted = new Set(cults.map(c => c.text));
   out.message.push(...fresh(members.flatMap(m => m.tics.filter(t => t.kind === 'message' && !quoted.has(t.text))
-    .map(t => ({ owner: m.name, q: 10 * Math.min(t.reactions || 0, 10) + (t.typicality || 1) + Math.random() * 0.5, tic: t })))));
+    .map(t => ({ owner: m.name, q: t.quality ?? 0.4, tic: t })))));
 
-  // Titres : tirés au hasard, d'autant plus souvent qu'ils sont marquants.
-  out.titre = fresh(records.map(c => ({ ...c, q: c.score || 1 })));
+  // Titres, habitudes et emoji préféré : déjà notés (records.js, tics.js).
+  out.titre.push(...fresh(records.map(c => ({ owner: c.owner, q: c.score ?? 0.4, tic: c.tic }))));
+  out.titre.push(...fresh(members.flatMap(m => m.tics.filter(t => t.kind === 'habitude').map(t => ({ owner: m.name, q: t.quality ?? 0.4, tic: t })))));
 
-  // Photos : les plus commentées.
+  // Photos : d'autant mieux qu'elles ont fait réagir.
   if (photoText) {
     out.photo = fresh(members.flatMap(m => (m.photos || []).map(p => (typeof p === 'string' ? { file: p, score: 0 } : p))
-      .map(p => ({ owner: m.name, q: 1 + p.score + Math.random() * 0.5,
+      .map(p => ({ owner: m.name, day: p.day,
+        q: score(T.fun.photo, 1, T.photoFloor + (1 - T.photoFloor) * react(p.score, 6) + ((p.burst || 1) <= 1 ? T.photoAlone : 0), 1),
         tic: { kind: 'photo', text: photoText, file: p.file, uses: m.photoCount || m.photos.length, others: 0, topOther: null, example: null } }))));
   }
 
-  // Tics : le sticker ou GIF fétiche, puis les expressions, l'emoji, les habitudes, les mots.
-  out.tic = fresh(members.flatMap(m => m.tics.filter(t => t.kind in TIC_RANK)
-    .map((t, i) => ({ owner: m.name, q: 10 * (6 - TIC_RANK[t.kind]) + Math.max(0, 12 - i) + Math.random() * 4, tic: t }))));
+  // Tics de langage, stickers et GIF fétiches (jamais la ponctuation).
+  out.tic = fresh(members.flatMap(m => m.tics.filter(t => !['message', 'habitude', 'ponct'].includes(t.kind))
+    .map(t => ({ owner: m.name, q: t.quality ?? 0.3, tic: t }))));
+  for (const list of Object.values(out)) for (const c of list) c.j = 1 + T.jitter * (2 * Math.random() - 1);
   return out;
 }
 
 // Composition de la partie : rounds manches, plus une carte de réserve pour la « Question bonus ».
-//  1. Chaque catégorie prend ses manches (voir SHARES) : les meilleures cartes, les joueurs présents
-//     d'abord, en variant les personnes ; les titres sont tirés au sort selon leur score.
-//  2. Chaque joueur présent est la réponse d'au moins une manche s'il a de quoi (on remplace au besoin
-//     la carte la moins bonne de quelqu'un qui en a plusieurs, ou d'un absent).
-//  3. Ordre : jamais deux fois de suite la même personne, les catégories alternent, et la première
+//  1. Planchers : chaque catégorie prend ses meilleures questions jusqu'à son plancher (TUNING.bounds).
+//  2. Manches libres : aux meilleures questions restantes, toutes catégories confondues, sans dépasser
+//     les plafonds. Un groupe aux photos très commentées aura plus de photos, un groupe sans tics nets
+//     plus de messages et de titres.
+//  Partout : les joueurs présents d'abord, une personne au plus dans 25 % des manches, une question
+//  sous TUNING.minScore seulement s'il ne reste rien, jamais deux fois la même tournure.
+//  3. Chaque joueur présent est la réponse d'au moins une manche s'il a de quoi.
+//  4. Ordre : jamais deux fois de suite la même personne, les catégories alternent, et la première
 //     question porte sur un joueur présent.
 export function buildDeck({ members, cults = [], records = [], present, rounds, used, photos = false, photoText = 'photo' }) {
-  const pool = candidates({ members, cults, records, rounds, used, photoText: photos ? photoText : null });
-  const shares = (photos && pool.photo.length ? SHARES : SHARES_NO_PHOTO)[rounds] || SHARES_NO_PHOTO[10];
-  const chosen = [], count = new Map(), kinds = new Map();
+  const pool = candidates({ members, cults, records, used, photoText: photos ? photoText : null });
+  const base = T.bounds[rounds] || T.bounds[10];
+  const bounds = photos && pool.photo.length ? base : { ...base, photo: [0, 0] };
+  const chosen = [], count = new Map(), kinds = new Map(), inCat = new Map();
   const n = name => count.get(name) || 0;
-  const perOwner = { message: MESSAGES_PER_PERSON, titre: Math.ceil(rounds / 10), photo: Math.ceil(rounds / 10), tic: 2 };
-  const ticCap = kind => (kind === 'debut' || kind === 'fin' ? 1 : Math.max(2, Math.ceil(shares.tic / 2)));
+  const people = new Set(Object.values(pool).flat().map(c => c.owner)).size;
+  const personCap = Math.max(Math.ceil(T.personShare * rounds), Math.ceil(rounds / Math.max(1, people)));
+  const perTen = Math.ceil(rounds / 10);
+  const perOwner = { message: T.messagesPerPerson, titre: perTen, photo: perTen, tic: 2 };
+  // Plafonds par sorte : cultes, habitudes et emojis préférés limités ; débuts et fins de message : un en tout.
   const kindKey = kind => (kind === 'fin' ? 'debut' : kind);
-  const value = c => c.q * (present.has(c.owner) ? PRESENT_BOOST : 1) / (1 + n(c.owner));
-  const allowed = (c, cat, relax) => {
-    if (!relax && chosen.filter(x => x.cat === cat && x.owner === c.owner).length >= perOwner[cat]) return false;
-    if (cat === 'tic' && !relax && (kinds.get(kindKey(c.tic.kind)) || 0) >= ticCap(c.tic.kind)) return false;
+  const kindCap = kind => (kind === 'culte' ? T.cults[rounds] || 1 : kind === 'habitude' || kind === 'favori' ? perTen
+    : kind === 'debut' || kind === 'fin' ? T.edgeMax : kind === 'record' || kind === 'message' || kind === 'photo' ? Infinity
+      : Math.max(2, Math.ceil(bounds.tic[1] / 2)));
+  const value = c => c.q * c.j * (present.has(c.owner) ? T.presentBoost : 1) / (1 + n(c.owner)) ** T.ownerPenalty;
+  // Une même tournure ne sert pas deux fois : ni en question de tic et dans un « qui a écrit ça ? »,
+  // ni dans deux messages de la même personne (la deuxième fois, tout le monde a compris).
+  const flat = s => ` ${String(s || '').toLowerCase().replace(/[^\p{L}\p{N}'\p{Extended_Pictographic}]+/gu, ' ')} `;
+  const spoils = (c, cat) => {
+    if (cat === 'tic' && ['expr', 'mot', 'debut', 'fin', 'emoji'].includes(c.tic.kind)) {
+      const t = flat(c.tic.text);
+      return chosen.some(x => x.cat === 'message' && x.owner === c.owner && flat(x.tic.text).includes(t));
+    }
+    if (cat === 'message') {
+      const seen = new Set([...chosen.filter(x => x.owner === c.owner && x.cat === 'tic').map(x => flat(x.tic.text)),
+        ...chosen.filter(x => x.owner === c.owner && x.cat === 'message').flatMap(x => (x.tic.found || []).map(flat))]);
+      return (c.tic.found || []).some(f => [...seen].some(u => u.includes(flat(f)) || flat(f).includes(u)));
+    }
+    return false;
+  };
+  // Niveaux d'exigence : 0 tout, 1 sans le score minimal, 2 sans les plafonds par catégorie et par sorte,
+  // 3 sans le plafond par personne (dernier recours pour remplir la partie).
+  const allowed = (c, cat, lvl) => {
+    if (lvl < 1 && c.q < T.minScore) return false;
+    if (lvl < 2 && chosen.filter(x => x.cat === cat && x.owner === c.owner).length >= perOwner[cat]) return false;
+    if (lvl < 2 && (kinds.get(kindKey(c.tic.kind)) || 0) >= kindCap(c.tic.kind)) return false;
+    if (lvl < 2 && spoils(c, cat)) return false;
+    // Pas deux photos du même jour : ce serait deux fois la même soirée.
+    if (lvl < 2 && cat === 'photo' && c.day != null && chosen.some(x => x.cat === 'photo' && x.day === c.day)) return false;
+    if (lvl < 3 && n(c.owner) >= personCap) return false;
     return true;
   };
   const add = (c, cat) => {
     pool[cat].splice(pool[cat].indexOf(c), 1);
-    chosen.push({ owner: c.owner, tic: c.tic, q: c.q, cat });
+    chosen.push({ owner: c.owner, tic: c.tic, q: c.q, cat, day: c.day });
     count.set(c.owner, n(c.owner) + 1);
-    if (cat === 'tic') kinds.set(kindKey(c.tic.kind), (kinds.get(kindKey(c.tic.kind)) || 0) + 1);
+    inCat.set(cat, (inCat.get(cat) || 0) + 1);
+    kinds.set(kindKey(c.tic.kind), (kinds.get(kindKey(c.tic.kind)) || 0) + 1);
   };
-  const pickOne = (cat, relax) => {
-    const open = pool[cat].filter(c => allowed(c, cat, relax));
-    if (!open.length) return false;
-    let c;
-    if (cat === 'titre') {   // tirage pondéré par le score
-      let r = Math.random() * open.reduce((sum, x) => sum + value(x), 0);
-      c = open.find(x => (r -= value(x)) < 0) || open[open.length - 1];
-    } else c = open.reduce((best, x) => (value(x) > value(best) ? x : best));
-    add(c, cat);
-    return true;
+  const best = (cats, lvl) => {
+    let top = null;
+    for (const cat of cats) for (const c of pool[cat]) {
+      if (!allowed(c, cat, lvl)) continue;
+      const v = value(c);
+      if (!top || v > top.v) top = { c, cat, v };
+    }
+    if (top) add(top.c, top.cat);
+    return !!top;
   };
 
-  let carry = 0;
-  for (const cat of CATEGORIES) {
-    const want = shares[cat] + carry;
-    let got = 0;
-    while (got < want && pickOne(cat, false)) got++;
-    carry = want - got;
+  // 1. Planchers, en commençant par le message culte (le plus drôle de la discussion), s'il y en a un.
+  const cult = pool.message.filter(c => c.tic.kind === 'culte' && allowed(c, 'message', 1)).sort((x, y) => y.q * y.j - x.q * x.j)[0];
+  if (cult) add(cult, 'message');
+  for (const cat of CATEGORIES) for (const lvl of [0, 1]) while ((inCat.get(cat) || 0) < bounds[cat][0] && best([cat], lvl));
+  // 2. Manches libres : la meilleure question restante, dans une catégorie qui n'a pas atteint son plafond.
+  for (const lvl of [0, 1, 2, 3]) {
+    while (chosen.length < rounds) {
+      const open = lvl < 2 ? CATEGORIES.filter(cat => (inCat.get(cat) || 0) < bounds[cat][1]) : CATEGORIES;
+      if (!best(open, lvl)) break;
+    }
   }
-  // Il manque encore des manches : on complète avec ce qui reste, dans le même ordre, sans plafonds.
-  for (const relax of [false, true]) for (const cat of CATEGORIES) while (carry > 0 && pickOne(cat, relax)) carry--;
 
-  // Chaque joueur présent a sa question, s'il a de quoi.
+  // 3. Chaque joueur présent a sa question, s'il a de quoi.
   for (const name of shuffle([...present])) {
     if (n(name)) continue;
     for (const cat of ['tic', 'photo', 'message', 'titre']) {
@@ -161,31 +185,31 @@ export function buildDeck({ members, cults = [], records = [], present, rounds, 
       const v = victims[0];
       chosen.splice(chosen.indexOf(v), 1);
       count.set(v.owner, n(v.owner) - 1);
-      if (cat === 'tic') kinds.set(kindKey(v.tic.kind), kinds.get(kindKey(v.tic.kind)) - 1);
+      inCat.set(cat, inCat.get(cat) - 1);
+      kinds.set(kindKey(v.tic.kind), kinds.get(kindKey(v.tic.kind)) - 1);
       add(mine, cat);
       break;
     }
   }
 
-  // Ordre : plusieurs essais au hasard, on garde le meilleur.
-  let best = null;
+  // 4. Ordre : plusieurs essais au hasard, on garde le meilleur.
+  let order = null;
   for (let attempt = 0; attempt < 120; attempt++) {
     const deck = arrange(chosen, present);
     const cost = deck.reduce((sum, c, i) => sum + (i && c.owner === deck[i - 1].owner ? 100 : 0) + (i && c.cat === deck[i - 1].cat ? 1 : 0), 0)
       + (present.size && !present.has(deck[0]?.owner) ? 10 : 0);
-    if (!best || cost < best.cost) best = { deck, cost };
+    if (!order || cost < order.cost) order = { deck, cost };
     if (cost === 0) break;
   }
-  const deck = best?.deck || [];
-  // Carte de réserve : un tic (sinon ce qui reste) d'une autre personne que la dernière manche.
+  const deck = order?.deck || [];
+  // Carte de réserve : la meilleure question restante, d'une autre personne que la dernière manche.
   const last = deck[deck.length - 1]?.owner;
-  for (const cat of ['tic', 'message', 'titre', 'photo']) {
-    const open = pool[cat].filter(c => c.owner !== last);
-    if (!open.length) continue;
-    const c = open.reduce((b, x) => (value(x) > value(b) ? x : b));
-    deck.push({ owner: c.owner, tic: c.tic, cat });
-    break;
+  let spare = null;
+  for (const cat of CATEGORIES) for (const c of pool[cat]) {
+    if (c.owner === last || (spare && value(c) <= value(spare.c))) continue;
+    spare = { c, cat };
   }
+  if (spare) deck.push({ owner: spare.c.owner, tic: spare.c.tic, cat: spare.cat });
   return deck.map(({ owner, tic }) => ({ owner, tic }));
 }
 

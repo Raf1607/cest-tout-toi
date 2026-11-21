@@ -18,6 +18,7 @@ const HEADER = new RegExp(
 const MARKS = /[‎‏‪-‮⁦-⁩﻿]/g;
 const LEADING_MARKS = /^[‎‏‪-‮⁦-⁩﻿]+/;
 const EDITED = /\s*<[^<>]*(?:modifié|edited)[^<>]*>\s*$/i;
+const DELETED = /^(?:ce message a été supprimé|vous avez supprimé ce message|message supprimé|this message was deleted|you deleted this message)\.?$/i;
 const SKIP = [
   /^<[^<>]*>$/,
   /^(?:ce message a été supprimé|vous avez supprimé ce message|message supprimé|this message was deleted|you deleted this message|null)$/i,
@@ -98,19 +99,24 @@ export function parseChat(raw, fileName = '') {
   const medias = [];
   const timeline = [];
   const counts = new Map();
+  const deleted = [];
   for (const msg of parsed) {
-    const text = msg.text.replace(MARKS, '').replace(/[  ]/g, ' ').replace(EDITED, '').trim();
+    const raw = msg.text.replace(MARKS, '').replace(/[  ]/g, ' ').trim();
+    const edited = EDITED.test(raw);
+    const text = raw.replace(EDITED, '').trim();
     const media = mediaOf(text.split('\n')[0]);
     if (media) {
       medias.push({ author: msg.author, day: msg.day, ...media });
     } else {
+      // Messages supprimés : on garde seulement qui les a supprimés (titre « supprime ses messages »).
+      if (DELETED.test(text)) { deleted.push({ author: msg.author, day: msg.day }); continue; }
       if (msg.marked || !text || SKIP.some(re => re.test(text))) continue;
       messages.push({ author: msg.author, text, day: msg.day });
     }
-    timeline.push({ author: msg.author, ...minutes(msg.f), text: media ? null : text, media: media?.kind || null, file: media?.file || null });
+    timeline.push({ author: msg.author, ...minutes(msg.f), text: media ? null : text, media: media?.kind || null, file: media?.file || null, ...(edited ? { edited: true } : {}) });
     counts.set(msg.author, (counts.get(msg.author) || 0) + 1);
   }
 
   const authors = [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  return { title: chatTitle(fileName), messages, medias, timeline, authors };
+  return { title: chatTitle(fileName), messages, medias, timeline, authors, deleted };
 }

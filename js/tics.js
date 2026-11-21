@@ -19,26 +19,14 @@
 // dans un export sans médias) et, dans un export avec médias, le sticker ou le GIF fétiche
 // de chacun (les fichiers identiques sont regroupés grâce à leur taille et leur CRC).
 
-import { memberStats, bestPhotos, cultMessages, montageItems, photoReactions, messageReactions } from './records.js';
+import { memberStats, bestPhotos, cultMessages, montageItems, photoReactions, messageReactions, isReaction } from './records.js';
 import { DICT } from './i18n.js';
+import { TUNING as T } from './tuning.js';
+import { score as common, superlative, median, sharp, strong, reliable } from './scoring.js';
 
 const MAX_MESSAGES = 60000;   // au-delà, on ne garde que les plus récents
 const MIN_MESSAGES = 20;      // en dessous, un membre n'est pas analysé
-const MIN_USES = 3;
 const MAX_GRAM = 5;
-const K = 30;
-const MAX_TICS = 12;
-// Du plus exigeant au plus souple ; lift : écart minimal, z : avance minimale sur le deuxième,
-// habit : écart minimal pour « qui envoie le plus de… » (être nettement en tête suffit).
-// exclusive : part minimale des utilisations d'un mot ou d'une expression qui doit venir de son « propriétaire ».
-const LEVELS = [
-  { lift: 2.5, z: 2.5, habit: 1.6, exclusive: 0.85 },
-  { lift: 2, z: 2, habit: 1.4, exclusive: 0.75 },
-  { lift: 1.6, z: 1.5, habit: 1.25, exclusive: 0.65 },
-  { lift: 1.4, z: 1, habit: 1.2, exclusive: 0.5 },
-];
-const COHESION = 0.3;
-const MIN_WORD_USES = 5;   // un mot seul doit revenir plus qu'une expression pour être un vrai tic
 const MAX_MEDIA_BYTES = 3 * 1024 * 1024; // un sticker ou un GIF plus lourd ne sera pas envoyé aux joueurs
 const HABITS = DICT.fr.habits;   // les sortes de médias comptées (le texte dépend de la langue)
 
@@ -204,6 +192,7 @@ function owned(c, totals, a, rule) {
   let C = 0, M = 0;
   for (let b = 0; b < c.length; b++) { C += c[b]; M += totals[b]; }
   const p = C / M;
+  const K = T.smoothing;
   const rate = b => (c[b] + K * p) / (totals[b] + K);
   const rest = (C - c[a] + K * p) / (M - totals[a] + K);   // tous les autres réunis
   const lift = rest ? rate(a) / rest : Infinity;
@@ -219,9 +208,8 @@ function owned(c, totals, a, rule) {
 const spreadOk = (spread, c) => spread >= Math.min(4, Math.max(2, Math.ceil(c * 0.3)));
 
 // Un message montrable tel quel : ni trop court ni trop long, sans lien, numéro ni prénom.
-const MAX_QUOTES = 3;
 function quotable(text, tokens, nameWords) {
-  if (text.length < 20 || text.length > 150 || /\b(?:https?:\/\/|www\.)|\d{4,}|@/i.test(text)) return false;
+  if (text.length < T.quoteMin || text.length > T.quoteMax || /\b(?:https?:\/\/|www\.)|\d{4,}|@/i.test(text)) return false;
   const words = tokens.filter(t => t.kind === 'word');
   return words.length >= 4 && !words.some(t => nameWords.has(t.k));
 }
@@ -236,7 +224,7 @@ function shuffle(a) {
 // membres ont des tics (au moins deux avec 3 tics, et la moitié des membres avec au moins un).
 export function analyze(chat, files = new Map(), lang = 'fr') {
   let result;
-  for (let level = 0; level < LEVELS.length; level++) {
+  for (let level = 0; level < T.levels.length; level++) {
     result = analyzeAt(chat, files, level, lang);
     const n = result.authors.filter(a => a.messages >= MIN_MESSAGES).length;
     const withTics = result.authors.filter(a => a.tics.length).length;
@@ -260,9 +248,9 @@ function analyzeAt(chat, files, level, lang) {
   const M = messages.length;
   const records = memberStats(chat);
   const active = perAll.filter(n => n >= MIN_MESSAGES).length;
-  const { lift, z, habit, exclusive } = LEVELS[level];
+  const { lift, z, exclusive } = T.levels[level];
   const share = Math.min(0.34, 2 / Math.max(active, 1));   // dans un gros groupe, les autres réunis pèsent lourd
-  const rule = { lift, z, share }, habitRule = { lift: habit, z, share };
+  const rule = { lift, z, share };
 
   // Une tournure doit revenir dans plusieurs conversations : on compte les jours distincts,
   // ou des tranches de la discussion si elle tient en quelques jours.
@@ -283,7 +271,7 @@ function analyzeAt(chat, files, level, lang) {
   // 2e passage : détail par membre, pour les tournures assez fréquentes.
   const stats = new Map();
   for (const [key, c] of total) {
-    if (c >= MIN_USES) stats.set(key, { c: new Int32Array(A), spread: new Int32Array(A), last: new Int32Array(A).fill(-1), cap: 0, mid: 0 });
+    if (c >= T.minUses) stats.set(key, { c: new Int32Array(A), spread: new Int32Array(A), last: new Int32Array(A).fill(-1), cap: 0, mid: 0 });
   }
   total.clear();
   messages.forEach((m, i) => {
@@ -307,7 +295,7 @@ function analyzeAt(chat, files, level, lang) {
   const candidates = names.map(() => []);
   // Une expression de plusieurs mots est plus drôle qu'un mot seul : bonus au classement.
   // Mots et expressions : presque exclusifs à une personne ; le hasard est alors peu probable, donc pas de test z.
-  const wordRule = { lift: 1.5, z: -Infinity, share: exclusive };
+  const wordRule = { lift: T.wordLift, z: -Infinity, share: exclusive };
   const totals = new Map([...stats].map(([key, st]) => [key, st.c.reduce((x, y) => x + y, 0)]));
   // Les mots d'une vraie expression vont ensemble : coupée en deux, chaque moitié (sauf si elle est bien
   // plus fréquente, comme « je suis ») n'apparaît presque jamais sans l'autre. « jeudi mdrrr » échoue :
@@ -315,7 +303,7 @@ function analyzeAt(chat, files, level, lang) {
   const cohesive = (words, n) => {
     for (let i = 1; i < words.length; i++) {
       const parts = [totals.get(words.slice(0, i).join(' ')), totals.get(words.slice(i).join(' '))].filter(Boolean);
-      if (parts.length && n < COHESION * Math.min(...parts)) return false;
+      if (parts.length && n < T.cohesion * Math.min(...parts)) return false;
     }
     return true;
   };
@@ -328,22 +316,27 @@ function analyzeAt(chat, files, level, lang) {
     const worded = kind !== 'emoji';
     for (let a = 0; a < A; a++) {
       const c = st.c[a];
-      if (c < (worded && words.length === 1 ? MIN_WORD_USES : MIN_USES) || perAuthor[a] < MIN_MESSAGES || !spreadOk(st.spread[a], c)) continue;
+      if (c < (worded && words.length === 1 ? T.minWordUses : T.minUses) || perAuthor[a] < MIN_MESSAGES || !spreadOk(st.spread[a], c)) continue;
       const own = owned(st.c, perAuthor, a, worded ? wordRule : rule);
       if (!own) continue;
       let boost = 1 + (c / (c + own.others));   // plus c'est exclusif, mieux c'est
-      if (words.length > 1) boost *= 1.35;
-      if (kind === 'debut' || kind === 'fin') boost *= 1.25;
-      if (kind === 'ponct') boost *= 0.7;
+      if (words.length > 1) boost *= T.boostExpr;
+      if (kind === 'debut' || kind === 'fin') boost *= T.boostEdge;
+      if (kind === 'ponct') boost *= T.boostPunct;
+      if (kind === 'emoji') boost *= T.boostEmoji;
       candidates[a].push(candidate(key, kind, st.c, a, own, boost));
     }
   }
 
+  // score : pour classer les tics d'une personne ; quality : score commun de la question (js/scoring.js),
+  // netteté = avance sur celui qui l'emploie le plus après lui, intensité = écart avec tous les autres.
   function candidate(key, kind, c, a, own, boost = 1) {
+    const second = own.other >= 0 ? c[own.other] : 0;
     return {
       key, kind, uses: c[a], others: own.others, lift: own.lift,
-      topOther: own.other >= 0 ? { name: names[own.other], uses: c[own.other] } : null,
+      topOther: own.other >= 0 ? { name: names[own.other], uses: second } : null,
       score: Math.log2(Math.min(own.lift, 64)) * Math.log2(1 + c[a]) * boost,
+      quality: common(T.fun[kind] ?? 0.5, sharp((c[a] + 1) / (second + 1)), strong(own.lift), reliable(c[a])),
     };
   }
 
@@ -357,12 +350,18 @@ function analyzeAt(chat, files, level, lang) {
     st.c[a]++;
     if (st.last[a] !== d) { st.spread[a]++; st.last[a] = d; }
   }
+  // Superlatif : « qui envoie le plus de vocaux ? », c'est celui qui en envoie le plus (même s'il écrit
+  // beaucoup) ; le score dit si ça vaut une question (avance sur le deuxième, écart avec la médiane).
   for (const [kind, st] of byKind) {
-    for (let a = 0; a < A; a++) {
-      if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
-      const own = owned(st.c, perAll, a, habitRule);
-      if (own) candidates[a].push({ ...candidate('#' + kind, 'habitude', st.c, a, own), text: L.habits[kind], of: kind });
-    }
+    const ranked = [...st.c.keys()].filter(a => perAll[a] >= MIN_MESSAGES).sort((x, y) => st.c[y] - st.c[x]);
+    if (ranked.length < 2) continue;
+    const [a, b] = ranked, c1 = st.c[a], c2 = st.c[b];
+    if (c1 < T.minUses || (days.size >= 8 && !spreadOk(st.spread[a], c1))) continue;
+    const { score: quality, lead } = superlative(T.fun.habitude[kind] ?? 0.5, 'count', c1, c2, median(ranked.slice(1).map(x => st.c[x])), c1);
+    if (lead < 1.1) continue;
+    const others = st.c.reduce((x, y) => x + y, 0) - c1;
+    candidates[a].push({ key: '#' + kind, kind: 'habitude', uses: c1, others, lift: (c1 + 1) / (c2 + 1), topOther: { name: names[b], uses: c2 },
+      score: Math.log2(1 + c1) * Math.log2(1 + c1 / (c2 + 1)), quality, text: L.habits[kind], of: kind });
   }
 
   // Sticker et GIF fétiches (export avec médias) : le même fichier envoyé encore et encore.
@@ -385,9 +384,9 @@ function analyzeAt(chat, files, level, lang) {
   for (const [key, st] of signatures) {
     if (!st.file) continue;
     for (let a = 0; a < A; a++) {
-      if (st.c[a] < MIN_USES || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
+      if (st.c[a] < T.minUses || perAll[a] < MIN_MESSAGES || (days.size >= 8 && !spreadOk(st.spread[a], st.c[a]))) continue;
       const own = owned(st.c, perAll, a, rule);
-      if (own) candidates[a].push({ ...candidate(key, st.kind, st.c, a, own, 1.3), text: st.kind === 'gif' ? L.thisGif : L.thisSticker, file: st.file });
+      if (own) candidates[a].push({ ...candidate(key, st.kind, st.c, a, own, T.boostMedia), text: st.kind === 'gif' ? L.thisGif : L.thisSticker, file: st.file });
     }
   }
 
@@ -397,9 +396,9 @@ function analyzeAt(chat, files, level, lang) {
   // (« voilà » → « voilà voilà »), auquel cas elle le remplace.
   const picked = candidates.map(list => {
     list.sort((x, y) => y.score - x.score);
-    const out = [], limits = { mot: 2, emoji: 2, ponct: 1, debut: 2, fin: 2, sticker: 2, gif: 2, habitude: 2 };
+    const out = [], limits = { ...T.perKind };
     for (const t of list) {
-      if (out.length >= MAX_TICS) break;
+      if (out.length >= T.maxTics) break;
       if (limits[t.kind] === 0) continue;
       const mine = contentWords(t.key);
       const clash = out.filter(o => contentWords(o.key).some(w => mine.includes(w)));
@@ -439,7 +438,9 @@ function analyzeAt(chat, files, level, lang) {
   // « Qui a écrit ça ? » : les messages les plus typiques de chacun, ceux qui accumulent plusieurs
   // de ses tournures (comptées une fois par famille : « du coup » et « Du coup… » ne font qu'une).
   const reacted = messageReactions(chat);
-  const weights = candidates.map(list => new Map(list.filter(t => !/^[#@]/.test(t.key)).map(t => [t.key, Math.log2(Math.min(t.lift, 64))])));
+  // Un emoji rend un message moins reconnaissable qu'une expression : il pèse moins.
+  const weights = candidates.map(list => new Map(list.filter(t => !/^[#@]/.test(t.key))
+    .map(t => [t.key, Math.log2(Math.min(t.lift, 64)) * (t.kind === 'emoji' ? T.quoteEmojiWeight : 1)])));
   const typical = names.map(() => []);
   const official = picked.map(list => new Map(list.map(t => [t.key, t.text])));   // ses tics retenus, pour la révélation
   const seenText = new Set();
@@ -467,23 +468,25 @@ function analyzeAt(chat, files, level, lang) {
     }
     if (groups.size < 2) return;
     // Un message qui a fait réagir le groupe passe devant : chaque emoji en réaction vaut une tournure.
-    const r = reacted.get(m.author + '\n' + m.text);
+    const r = isReaction(m.text) ? null : reacted.get(m.author + '\n' + m.text);
     const typicality = [...groups.values()].reduce((x, [v]) => x + v, 0);
-    const score = typicality + 1.5 * Math.min(r?.reactions || 0, 8) + 0.3 * Math.min(r?.score || 0, 10) + Math.random();
+    const score = typicality + T.quoteReaction * Math.min(r?.reactions || 0, 8) + T.quoteBuzz * Math.min(r?.score || 0, 10) + Math.random();
     typical[a].push({ text: m.text, score, typicality, replies: r?.score || 0, reactions: r?.reactions || 0, emojis: r?.emojis || [], groups: [...groups.keys()].sort().join('|'), found: shown.length ? shown : [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
   });
   typical.forEach((list, a) => {
     list.sort((x, y) => y.score - x.score);
     const kept = [];
     for (const t of list) {
-      if (kept.length >= MAX_QUOTES) break;
+      if (kept.length >= T.maxQuotes) break;
       if (kept.some(k => k.groups === t.groups)) continue;   // deux fois les mêmes tournures : on varie
       kept.push(t);
     }
     for (const t of kept) {
       picked[a].push({
         key: '=' + t.text, kind: 'message', text: t.text, uses: 0, others: 0, topOther: null, lift: 0,
-        reactions: t.reactions, buzz: t.replies, typicality: Math.round(t.typicality * 10) / 10,
+        reactions: t.reactions, buzz: t.replies, typicality: Math.round(t.typicality * 10) / 10, found: t.found.slice(0, 3),
+        // Netteté : reconnaissable à ses tournures ; intensité : a fait réagir le groupe.
+        quality: common(T.fun.message, t.typicality / T.quoteTypical, 0.35 + 0.65 * (1 - Math.exp(-t.reactions / 3)), 1),
         detail: L.typical(names[a], t.found.slice(0, 3)) + (t.reactions >= 2 ? ' ' + L.typicalReacted(t.reactions, t.emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')) : ''),
       });
     }
@@ -493,10 +496,10 @@ function analyzeAt(chat, files, level, lang) {
     .map((name, a) => ({
       name,
       messages: perAll[a],
-      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null, detail = null, reactions, buzz, typicality }) =>
-        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of, detail, ...(kind === 'message' ? { reactions, buzz, typicality } : {}) })),
+      tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null, detail = null, reactions, buzz, typicality, found, quality }) =>
+        ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of, detail, quality: Math.round(quality * 1000) / 1000, ...(kind === 'message' ? { reactions, buzz, typicality, found } : {}) })),
       // Photos : celles qui ont le plus fait réagir d'abord (score de réaction), au hasard à égalité.
-      photos: shuffle(photos[a].map(file => ({ file, score: shots.get(file)?.score || 0 })))
+      photos: shuffle(photos[a].map(file => ({ file, score: shots.get(file)?.score || 0, burst: shots.get(file)?.burst || 1, day: shots.get(file)?.day ?? null })))
         .sort((x, y) => y.score - x.score).slice(0, 40),
       photoCount: photos[a].length,
       stats: records.get(name) || null,

@@ -233,6 +233,10 @@ const FR = {
     rieur: ['rit de tout', (w, r, d, p) => `${p(w.s.laughs)} de ses messages sont des rires, contre ${p(r.s.laughs)} pour ${r.name}.`],
     dernier: ['a toujours le dernier mot', (w, r) => `${w.s.lastWords} fois le dernier message avant 8 h de silence (${r.name} : ${r.s.lastWords}).`],
     matinal: ['est debout avant tout le monde', (w, r, d, p) => `${p(w.s.early)} de ses messages entre 5 h et 8 h, contre ${p(r.s.early)} pour ${r.name}.`],
+    anniv: ['souhaite les anniversaires (et la bonne année) en premier', (w, r) => `${w.s.wishFirst} fois le tout premier message de vœux du jour (${r.name} : ${r.s.wishFirst}).`],
+    supprime: ['supprime ses messages en douce', (w, r) => `${w.s.deleted} messages supprimés, contre ${r.s.deleted} pour ${r.name}.`],
+    retouche: ['modifie ses messages après coup', (w, r) => `${w.s.edited} messages modifiés après envoi, contre ${r.s.edited} pour ${r.name}.`],
+    liens: ['partage le plus de liens', (w, r) => `${w.s.links} liens partagés, contre ${r.s.links} pour ${r.name}.`],
   },
 };
 
@@ -445,6 +449,10 @@ const EN = {
     rieur: ['laughs at everything', (w, r, d, p) => `${p(w.s.laughs)} of their messages are laughs, vs ${p(r.s.laughs)} for ${r.name}.`],
     dernier: ['always has the last word', (w, r) => `Sent the last message before 8 hours of silence ${w.s.lastWords} times (${r.name}: ${r.s.lastWords}).`],
     matinal: ['is up before everyone else', (w, r, d, p) => `${p(w.s.early)} of their messages between 5 and 8 a.m., vs ${p(r.s.early)} for ${r.name}.`],
+    anniv: ['is always first to wish happy birthday (and happy new year)', (w, r) => `Sent the very first wishes of the day ${w.s.wishFirst} times (${r.name}: ${r.s.wishFirst}).`],
+    supprime: ['quietly deletes their messages', (w, r) => `${w.s.deleted} deleted messages, vs ${r.s.deleted} for ${r.name}.`],
+    retouche: ['edits their messages after sending', (w, r) => `${w.s.edited} messages edited after sending, vs ${r.s.edited} for ${r.name}.`],
+    liens: ['shares the most links', (w, r) => `${w.s.links} links shared, vs ${r.s.links} for ${r.name}.`],
   },
 };
 
