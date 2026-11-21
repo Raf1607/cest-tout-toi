@@ -52,14 +52,15 @@ const inviteUrl = code => `${location.origin + location.pathname}?p=${code}`;
 // Compteur de parties, tous joueurs confondus : un service public gratuit (Abacus) garde le total,
 // faute de serveur à nous. Il ne reçoit qu'un « +1 », rien sur la partie.
 // Le compteur est là tout de suite : ses chiffres défilent comme un panneau de gare (une seconde au moins,
-// plus si le service tarde), puis se posent un à un sur le total. Si le service ne répond pas,
-// on se pose sur le dernier total vu sur ce téléphone ; sans lui, le compteur s'efface.
+// plus si le service tarde), puis se posent un à un sur le total. Il ne disparaît jamais : si le service
+// ne répond pas, on se pose sur le dernier total vu sur ce téléphone, sinon les chiffres continuent
+// de défiler et on redemande toutes les quelques secondes.
 const COUNTER = 'https://abacus.jasoncameron.dev';
 const COUNTER_KEY = 'who-is-bro-raf1607/parties';
-const SPIN_MIN = 1000, SPIN_STEP = 70, SETTLE_STEP = 140, COUNTER_TIMEOUT = 6000;
+const SPIN_MIN = 1000, SPIN_STEP = 70, SETTLE_STEP = 140, COUNTER_TIMEOUT = 6000, COUNTER_RETRY = 4000;
 const lastGames = (() => { try { return Number(localStorage.getItem('ctt-games')) || null; } catch { return null; } })();
-const games = { value: null, start: performance.now(), settleAt: 0, done: false, gone: false, raf: 0 };
-(() => {
+const games = { value: null, start: performance.now(), settleAt: 0, done: false, raf: 0 };
+(function fetchGames() {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), COUNTER_TIMEOUT);
   fetch(`${COUNTER}/get/${COUNTER_KEY}`, { signal: abort.signal }).then(r => (r.ok ? r.json() : null)).then(d => {
@@ -67,8 +68,8 @@ const games = { value: null, start: performance.now(), settleAt: 0, done: false,
     games.value = d.value;
     try { localStorage.setItem('ctt-games', d.value); } catch { /* navigation privée */ }
   }).catch(() => {
-    games.value = lastGames;
-    if (!games.value) { games.gone = true; document.querySelector('.counter')?.remove(); }
+    if (lastGames) games.value = lastGames;
+    else setTimeout(fetchGames, COUNTER_RETRY);
   }).finally(() => clearTimeout(timer));
 })();
 
@@ -76,7 +77,6 @@ const gamesText = n => n.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US');
 // Les cases du panneau : une par chiffre, les espaces et virgules de milliers entre elles.
 const flaps = text => [...text].map(c => (/\d/.test(c) ? `<span class="flap">${c}</span>` : `<span class="sep">${c}</span>`)).join('');
 function counterHtml() {
-  if (games.gone) return '';
   const settled = games.done;
   const text = settled ? gamesText(games.value) : (games.settleAt ? gamesText(games.value) : gamesText(lastGames || 1234));
   if (!settled) startFlaps();
