@@ -133,67 +133,153 @@ media.handle('b', { t: 'skip' });
 assert.equal(media.phase, 'montage', 'seul l\'hôte peut passer le montage');
 media.handle('h', { t: 'skip' });
 assert.equal(media.phase, 'end');
-// Roue de la fortune : hasard, bonus pour le premier votant, malus pour le premier du classement.
+// Roue de la fortune : huit cases, une chance sur trois après chaque manche.
 {
-  const w = new Game(analysis, 'ROUE', 'h', () => {});
-  w.wheelChance = 1;
-  w.join('b');
-  w.handle('h', { t: 'claim', author: 'Julie Moreau' });
-  w.handle('b', { t: 'claim', author: 'Karim B' });
-  w.handle('h', { t: 'settings', settings: { rounds: 20 } });
-  w.handle('h', { t: 'start' });
-  const seen = new Set();
-  for (let i = 0; i < 12 && w.phase === 'question'; i++) {
-    const answer = w.round.card.owner, bad = w.options.find(o => o !== answer);
-    w.handle('b', { t: 'vote', n: w.round.n, author: bad });     // b vote en premier, et se trompe
-    w.handle('h', { t: 'vote', n: w.round.n, author: answer });  // h prend la tête
-    w.reveal();
-    w.next();
-    w.advance();
-    assert.equal(w.phase, 'wheel');
-    const seg = WHEEL[w.wheel.index];
-    seen.add(seg.id);
-    if (!w.wheel.shielded) assert.equal(w.wheel.target, seg.kind === 'bonus' ? 'b' : w.order[0], `cible de ${seg.id}`);
-    const fx = { ...w.pending };
-    w.advance();
-    if (w.phase !== 'question') break;
-    const hv = w.view('h').round, bv = w.view('b').round;
-    if (fx.flou === 'h') assert.ok(hv.blurred && !bv.blurred, 'seul le visé a la question floue');
-    if (fx.flou) { w.handle('b', { t: 'vote', n: w.round.n, author: answer }); assert.ok(!w.view('h').round.blurred, 'net dès le premier vote'); w.round.votes = {}; w.round.first = undefined; }
-    if (fx.melange === 'h') { assert.ok(hv.labels && !bv.labels); for (const n of w.options) assert.equal([...hv.labels[n].toLowerCase()].sort().join(''), [...n.toLowerCase()].sort().join(''), 'mêmes lettres'); }
-    if (fx.lettre === 'b') assert.ok(w.round.card.owner.split(' ')[0].toUpperCase().includes(bv.hint) && !hv.hint, 'lettre du prénom à trouver');
-    if (fx.double === 'b') assert.ok(bv.double && !hv.double);
-  }
-  clearTimeout(w.timer);
-  assert.ok(seen.size >= 2, 'la roue varie');
-  // Roue désactivée par l'hôte : elle ne sort jamais.
+  const real = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+  // Force la case tirée (et, pour les tirages de joueurs, le même indice modulo la liste).
+  const force = (g, id) => {
+    const cases = WHEEL.map((_, i) => i).filter(i => WHEEL[i].id !== 'extra' || g.spare);
+    const k = cases.indexOf(WHEEL.findIndex(x => x.id === id));
+    globalThis.crypto.getRandomValues = a => { a[0] = k; return a; };
+  };
+  const unforce = () => { globalThis.crypto.getRandomValues = real; };
+  const setup = rounds => {
+    const g = new Game(analysis, 'ROUE', 'h', () => {});
+    g.wheelChance = 0;
+    g.join('b');
+    g.handle('h', { t: 'claim', author: 'Julie Moreau' });
+    g.handle('b', { t: 'claim', author: 'Karim B' });
+    g.handle('h', { t: 'settings', settings: { rounds } });
+    g.handle('h', { t: 'start' });
+    return g;
+  };
+  // Manche jouée : h trouve, b se trompe (h en tête, b dernier), puis la roue sur la case voulue.
+  const playThenSpin = (g, id) => {
+    const answer = g.round.card.owner, bad = g.round.options.find(o => o !== answer);
+    g.handle('b', { t: 'vote', n: g.round.n, author: bad });
+    g.handle('h', { t: 'vote', n: g.round.n, author: answer });
+    g.reveal(); g.next();
+    force(g, id); g.spin(); unforce();
+    assert.equal(g.phase, 'wheel');
+    assert.equal(WHEEL[g.wheel.index].id, id);
+  };
+  const nextRound = g => { g.advance(); assert.equal(g.phase, 'question'); return g.round.card.owner; };
+
+  assert.equal(WHEEL.length, 8, 'huit cases');
+  // Coup de pouce : le dernier marque double.
+  let g = setup(10);
+  playThenSpin(g, 'pouce');
+  assert.equal(g.wheel.target, 'b', 'coup de pouce pour le dernier');
+  let answer = nextRound(g);
+  assert.equal(g.view('b').round.boost, 'pouce'); assert.equal(g.view('h').round.boost, undefined);
+  let before = g.players.get('b').score;
+  g.handle('b', { t: 'vote', n: g.round.n, author: answer }); g.reveal();
+  assert.equal(g.players.get('b').score - before, 4, '+4 avec le coup de pouce');
+  clearTimeout(g.timer);
+
+  // Manche double : +4 et −2 pour tout le monde.
+  g = setup(10);
+  playThenSpin(g, 'manche');
+  answer = nextRound(g);
+  assert.ok(g.view('h').round.all && g.view('b').round.all);
+  g.players.get('b').score = 5;
+  const hb = g.players.get('h').score;
+  g.handle('h', { t: 'vote', n: g.round.n, author: answer });
+  g.handle('b', { t: 'vote', n: g.round.n, author: g.round.options.find(o => o !== answer) });
+  g.reveal();
+  assert.equal(g.players.get('h').score - hb, 4, '+4 en manche double');
+  assert.equal(g.players.get('b').score, 3, '−2 en manche double');
+  clearTimeout(g.timer);
+
+  // Course au ×2 : le premier à trouver (heure de son dernier vote) marque double.
+  g = setup(10);
+  playThenSpin(g, 'course');
+  answer = nextRound(g);
+  assert.ok(g.view('h').round.course && g.view('b').round.course);
+  const bad = g.round.options.find(o => o !== answer);
+  g.handle('h', { t: 'vote', n: g.round.n, author: bad });         // h vote en premier, mais faux
+  g.handle('b', { t: 'vote', n: g.round.n, author: answer });
+  g.round.at.b -= 50;
+  g.handle('h', { t: 'vote', n: g.round.n, author: answer });      // h change d'avis : il arrive après b
+  const [h0, b0] = [g.players.get('h').score, g.players.get('b').score];
+  g.reveal();
+  assert.equal(g.round.racer, 'b', 'le premier qui trouve gagne la course');
+  assert.equal(g.players.get('b').score - b0, 4); assert.equal(g.players.get('h').score - h0, 2);
+  assert.equal(g.view('h').round.racer, 'b');
+  clearTimeout(g.timer);
+  g = setup(10);
+  playThenSpin(g, 'course');
+  answer = nextRound(g);
+  g.handle('h', { t: 'vote', n: g.round.n, author: g.round.options.find(o => o !== answer) });
+  g.reveal();
+  assert.equal(g.view('h').round.racer, '', 'personne n\'a trouvé : le ×2 est perdu');
+  clearTimeout(g.timer);
+
+  // Roulette : un joueur au hasard marque double ; la liste des prénoms défile.
+  g = setup(10);
+  playThenSpin(g, 'roulette');
+  assert.ok(['h', 'b'].includes(g.wheel.target) && g.view('h').wheel.names.length === 2);
+  const lucky = g.wheel.target;
+  nextRound(g);
+  assert.equal(g.view(lucky).round.boost, 'roulette');
+  clearTimeout(g.timer);
+
+  // Question floue : pour le premier, jusqu'au premier vote.
+  g = setup(10);
+  playThenSpin(g, 'flou');
+  assert.equal(g.wheel.target, 'h');
+  answer = nextRound(g);
+  assert.ok(g.view('h').round.blurred && g.view('h').round.flou && !g.view('b').round.blurred, 'seul le premier a la question floue');
+  g.handle('b', { t: 'vote', n: g.round.n, author: answer });
+  assert.ok(!g.view('h').round.blurred, 'nette dès le premier vote');
+  clearTimeout(g.timer);
+
+  // Question bonus : une manche de plus, une seule fois par partie.
+  g = setup(6);
+  assert.equal(g.deck.length, 6); assert.ok(g.spare, 'une carte en réserve');
+  playThenSpin(g, 'extra');
+  assert.equal(g.deck.length, 7); assert.equal(g.spare, null);
+  assert.ok(!WHEEL.map((_, i) => i).filter(i => WHEEL[i].id !== 'extra' || g.spare).some(i => WHEEL[i].id === 'extra'), 'plus de question bonus sur la roue');
+  g.index = 5; g.advance();
+  assert.equal(g.view('h').round.bonus, true); assert.equal(g.view('h').round.total, 7);
+  clearTimeout(g.timer);
+
+  // −2 au premier, et bouclier : il bloque un malus jusqu'au tour de roue suivant.
+  g = setup(10);
+  playThenSpin(g, 'moins2');
+  assert.equal(g.wheel.target, 'h');
+  assert.equal(g.players.get('h').score, 0, '−2 immédiat, jamais sous zéro');
+  g.players.get('h').score = 5; g.shields.add('h');
+  force(g, 'moins2'); g.spin(); unforce();
+  assert.ok(g.wheel.shielded && g.players.get('h').score === 5, 'le bouclier bloque le malus');
+  force(g, 'moins2'); g.spin(); unforce();
+  assert.equal(g.players.get('h').score, 3, 'bouclier utilisé : −2');
+  g.shields.add('b');
+  force(g, 'pouce'); g.spin(); unforce();
+  assert.ok(!g.shields.has('b'), 'le bouclier disparaît au tour de roue suivant');
+  force(g, 'bouclier'); g.spin(); unforce();
+  assert.equal(g.shields.size, 1, 'bouclier pour un joueur au hasard');
+  g.next();
+  assert.ok(g.view('h').ranking.rows.some(r => r.shield), 'le bouclier se voit au classement');
+  clearTimeout(g.timer);
+
+  // Chance d'un tour de roue, et roue désactivée par l'hôte.
+  g = setup(10); g.wheelChance = 1;
+  g.reveal(); g.next(); g.advance();
+  assert.equal(g.phase, 'wheel', 'la roue tourne même si personne n\'a voté');
+  clearTimeout(g.timer);
   const off = new Game(analysis, 'OFF', 'h', () => {});
   off.wheelChance = 1;
-  off.join('b');
   off.handle('h', { t: 'claim', author: 'Julie Moreau' });
-  off.handle('b', { t: 'claim', author: 'Karim B' });
-  off.handle('h', { t: 'settings', settings: { wheel: false } });
+  off.handle('h', { t: 'settings', settings: { wheel: false, absent: true } });
   off.handle('h', { t: 'start' });
-  off.handle('b', { t: 'vote', n: 1, author: 'Karim B' });
   off.reveal(); off.next(); off.advance();
   assert.equal(off.phase, 'question', 'pas de roue quand elle est désactivée');
   clearTimeout(off.timer);
-  // Bouclier : il bloque un malus, une seule fois.
-  const s = new Game(analysis, 'BOUC', 'h', () => {});
-  s.wheelChance = 0;
-  s.join('b');
-  s.handle('h', { t: 'claim', author: 'Julie Moreau' });
-  s.handle('b', { t: 'claim', author: 'Karim B' });
-  s.handle('h', { t: 'start' });
-  s.reveal(); s.order = ['h', 'b']; s.players.get('h').score = 5; s.shields.add('h'); s.round.first = 'b';
-  const real = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
-  const force = id => { const i = WHEEL.findIndex(x => x.id === id); globalThis.crypto.getRandomValues = a => { a[0] = i; return a; }; };
-  force('moins2'); s.spin();
-  assert.ok(s.wheel.shielded && s.players.get('h').score === 5 && !s.shields.has('h'), 'le bouclier absorbe le malus');
-  s.spin();
-  assert.equal(s.players.get('h').score, 3, 'sans bouclier, -2 points');
-  globalThis.crypto.getRandomValues = real;
-  clearTimeout(s.timer);
+  const last = setup(6); last.wheelChance = 1;
+  last.index = 5; last.ask(); last.reveal(); last.next(); last.advance();
+  assert.notEqual(last.phase, 'wheel', 'jamais de roue après la dernière manche');
+  clearTimeout(last.timer);
 }
 
 // Verrouillage : un nouveau téléphone attend l'accord de l'hôte, ne reçoit rien avant, et

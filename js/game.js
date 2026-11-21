@@ -9,19 +9,25 @@ export const SECONDS = [15, 25, 40];
 const GAIN = 2, LOSS = 1;   // points par bonne et par mauvaise réponse (jamais en dessous de zéro)
 const AFTER_FIRST_VOTE = 7000;   // dès le premier vote, il ne reste que ce temps aux autres
 const ALL_VOTED_PAUSE = 600;     // tout le monde a voté : petite pause avant la réponse
-// Roue de la fortune : tirée au sort après chaque manche (une fois sur quatre en moyenne). Bonus pour
-// le premier à avoir voté, malus pour le premier du classement. Bonus et malus alternent sur la roue.
+// Roue de la fortune : une chance sur trois après chaque manche (sauf la dernière). Huit cases, autant
+// de chances chacune. Les bonus doublent des points (le dernier, le premier qui trouve, un joueur au
+// hasard, tout le monde), protègent ou ajoutent une manche ; les malus visent le premier du classement.
+// Les cases de même nature sont séparées sur la roue.
 export const WHEEL = [
-  { id: 'double', kind: 'bonus' },
-  { id: 'moins2', kind: 'malus' },
-  { id: 'lettre', kind: 'bonus' },
-  { id: 'flou', kind: 'malus' },
-  { id: 'bouclier', kind: 'bonus' },
-  { id: 'melange', kind: 'malus' },
+  { id: 'pouce', kind: 'bonus' },       // le dernier du classement marque double à la manche suivante
+  { id: 'moins2', kind: 'malus' },      // le premier perd 2 points tout de suite
+  { id: 'course', kind: 'bonus' },      // le premier à trouver la bonne réponse marque double
+  { id: 'roulette', kind: 'bonus' },    // un joueur au hasard marque double
+  { id: 'flou', kind: 'malus' },        // le premier a la question floue jusqu'au premier vote
+  { id: 'manche', kind: 'bonus' },      // tout compte double pour tous : gains et pertes
+  { id: 'bouclier', kind: 'bonus' },    // un joueur au hasard est protégé du prochain malus
+  { id: 'extra', kind: 'bonus' },       // une manche de plus que prévu (une fois par partie)
 ];
+export const RANDOM_PICK = ['roulette', 'bouclier'];   // cases suivies du défilé des prénoms
 export const WHEEL_SPIN_MS = 4000;   // la roue tourne, puis le résultat reste affiché le temps de le lire
 export const WHEEL_MS = 10000;
-const WHEEL_CHANCE = 1 / 4;
+export const ROULETTE_MS = 4000;     // en plus, pour le défilé des prénoms
+const WHEEL_CHANCE = 1 / 3;
 
 // Vrai hasard du navigateur, pas Math.random.
 const randomInt = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;
@@ -30,19 +36,6 @@ const randomInt = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;
 export const MAX_CHOICES = 6;
 const ACTIVE_SHARE = 0.02;
 const chance = p => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 < p;
-
-// « Raph » → « Pahr » : les lettres de chaque mot mélangées, majuscule en tête.
-function scramble(name) {
-  return name.split(' ').map(word => {
-    let out = word;
-    for (let tries = 0; tries < 8 && out.toLowerCase() === word.toLowerCase() && word.length > 1; tries++) {
-      const letters = [...word.toLowerCase()];
-      for (let i = letters.length - 1; i > 0; i--) { const j = randomInt(i + 1); [letters[i], letters[j]] = [letters[j], letters[i]]; }
-      out = letters.join('');
-    }
-    return out[0].toUpperCase() + out.slice(1);
-  }).join(' ');
-}
 
 export const MONTAGE_MS = 15000;   // montage de fin, avant le classement final
 const MONTAGE_MIN_ITEMS = 3;
@@ -203,8 +196,8 @@ export class Game {
       if (name) Object.assign(p, { author: null, outside: true, name });
     } else if (msg.t === 'vote' && this.phase === 'question' && msg.n === this.round.n
                && (this.round.options || this.options).includes(msg.author)) {      // on peut changer d'avis jusqu'à la fin
-      this.round.first ??= id;           // le premier à voter, pour la roue
       this.round.votes[id] = msg.author;
+      (this.round.at ??= {})[id] = Date.now();   // l'heure du dernier vote, pour la course au ×2
       this.checkVotes();
     } else if (msg.t === 'settings' && host && this.phase === 'lobby') {
       const s = msg.settings || {};
@@ -267,7 +260,9 @@ export class Game {
     const extra = new Map();
     for (const c of chosen) extra.set(c.owner, [...(extra.get(c.owner) || []), c.tic]);
     const deckOwners = [...owners, ...[...extra.keys()].filter(n => !owners.some(a => a.name === n)).map(n => ({ ...this.member(n), tics: [] }))];
-    this.deck = buildDeck(deckOwners, this.settings.rounds, this.used, this.settings.photos, extra, DICT[this.lang].thisPhoto);
+    // Une carte de plus en réserve, pour la case « Question bonus » de la roue.
+    this.deck = buildDeck(deckOwners, this.settings.rounds + 1, this.used, this.settings.photos, extra, DICT[this.lang].thisPhoto);
+    this.spare = this.deck.length > this.settings.rounds ? this.deck.pop() : null;
     for (const p of this.players.values()) p.score = 0;
     this.index = 0;
     this.order = [];
@@ -282,13 +277,7 @@ export class Game {
     const ms = this.settings.seconds * 1000;
     const effects = this.pending;
     this.pending = {};
-    const letters = [...card.owner.split(' ')[0]].filter(c => /\p{L}/u.test(c));
-    this.round = {
-      n: this.index + 1, card, votes: {}, endsAt: Date.now() + ms, effects,
-      hint: effects.lettre ? letters[randomInt(letters.length)].toUpperCase() : null,
-      options: this.choicesFor(card.owner),
-    };
-    this.round.labels = effects.melange ? Object.fromEntries(this.round.options.map(n => [n, scramble(n)])) : null;
+    this.round = { n: this.index + 1, card, votes: {}, at: {}, endsAt: Date.now() + ms, effects, options: this.choicesFor(card.owner) };
     this.phase = 'question';
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.reveal(), ms + 300);
@@ -335,11 +324,16 @@ export class Game {
     if (this.phase !== 'question') return;
     clearTimeout(this.timer);
     this.round.deltas = {};
+    const fx = this.round.effects, owner = this.round.card.owner, at = this.round.at || {};
+    // Course au ×2 : le premier à avoir voté pour la bonne réponse (l'heure de son dernier vote).
+    const right = Object.keys(this.round.votes).filter(id => this.round.votes[id] === owner);
+    this.round.racer = fx.course ? right.sort((a, b) => (at[a] ?? 0) - (at[b] ?? 0))[0] || null : null;
     for (const [id, author] of Object.entries(this.round.votes)) {
       const p = this.players.get(id);
       if (!p) continue;
-      const gain = this.round.effects.double === id ? GAIN * 2 : GAIN;
-      const score = author === this.round.card.owner ? p.score + gain : Math.max(0, p.score - LOSS);
+      const doubled = fx.all || fx.double?.id === id || this.round.racer === id;
+      const gain = doubled ? GAIN * 2 : GAIN, loss = fx.all ? LOSS * 2 : LOSS;
+      const score = author === owner ? p.score + gain : Math.max(0, p.score - loss);
       this.round.deltas[id] = score - p.score;
       p.score = score;
     }
@@ -362,7 +356,7 @@ export class Game {
 
   // Après le classement : la roue si le sort le veut, puis la manche suivante.
   advance() {
-    if (this.phase === 'ranking' && this.settings.wheel && this.round.first && this.index + 1 < this.deck.length && chance(this.wheelChance)) return this.spin();
+    if (this.phase === 'ranking' && this.settings.wheel && this.index + 1 < this.deck.length && chance(this.wheelChance)) return this.spin();
     if (this.phase !== 'ranking' && this.phase !== 'wheel') return;
     clearTimeout(this.timer);
     this.index++;
@@ -391,17 +385,31 @@ export class Game {
   }
 
   spin() {
-    const index = randomInt(WHEEL.length), seg = WHEEL[index];
-    const target = seg.kind === 'bonus' ? this.round.first : this.order[0];
-    const shielded = seg.kind === 'malus' && this.shields.has(target);
-    if (shielded) this.shields.delete(target);
+    const shields = this.shields;          // un bouclier vaut jusqu'au tour de roue suivant
+    this.shields = new Set();
+    const cases = WHEEL.map((_, i) => i).filter(i => WHEEL[i].id !== 'extra' || this.spare);
+    const index = cases[randomInt(cases.length)], seg = WHEEL[index];
+    const players = [...this.players.values()].filter(p => p.connected && (p.author || p.outside));
+    const pick = list => (list.length ? list[randomInt(list.length)].id : null);
+    const scores = players.map(p => p.score);
+    let target = null;
+    if (seg.id === 'pouce') target = pick(players.filter(p => p.score === Math.min(...scores)));
+    else if (RANDOM_PICK.includes(seg.id)) target = pick(players);
+    else if (seg.kind === 'malus') target = pick(players.filter(p => p.score === Math.max(...scores)));
+    const shielded = seg.kind === 'malus' && shields.has(target);
+    if (shielded) { /* le malus ne passe pas */ }
+    else if (seg.id === 'pouce' || seg.id === 'roulette') this.pending.double = { id: target, why: seg.id };
+    else if (seg.id === 'course') this.pending.course = true;
+    else if (seg.id === 'manche') this.pending.all = true;
     else if (seg.id === 'bouclier') this.shields.add(target);
-    else if (seg.id === 'moins2') { const p = this.players.get(target); p.score = Math.max(0, p.score - 2); }
-    else this.pending[seg.id] = target;
-    this.wheel = { index, target, shielded };
+    else if (seg.id === 'extra') { this.deck.push({ ...this.spare, bonus: true }); this.spare = null; }
+    else if (seg.id === 'moins2') { const p = this.players.get(target); if (p) p.score = Math.max(0, p.score - 2); }
+    else if (seg.id === 'flou') this.pending.flou = target;
+    const random = RANDOM_PICK.includes(seg.id);
+    this.wheel = { index, target, shielded, names: random ? players.map(p => p.author || p.name) : null };
     this.phase = 'wheel';
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.advance(), WHEEL_MS);
+    this.timer = setTimeout(() => this.advance(), WHEEL_MS + (random ? ROULETTE_MS : 0));
     this.changed();
   }
 
@@ -410,9 +418,9 @@ export class Game {
   // Instantané de la partie (données simples), gardé sur le téléphone de l'hôte pour reprendre après
   // un rechargement de la page.
   snapshot() {
-    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking } = this;
+    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare } = this;
     return {
-      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking,
+      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare,
       used: [...this.used], shields: [...this.shields], allowed: [...this.allowed], refused: [...this.refused],
       players: [...this.players.values()],
     };
@@ -422,7 +430,7 @@ export class Game {
   // acceptés, ils rentrent directement), et les minuteurs repartent en leur laissant le temps.
   static restore(analysis, snap) {
     const g = new Game(analysis, snap.code, snap.hostId, null);
-    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking']) g[k] = snap[k];
+    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking', 'spare']) g[k] = snap[k];
     if (g.round) g.round.card = g.deck[g.index] || g.round.card;
     g.used = new Set(snap.used);
     g.shields = new Set(snap.shields);
@@ -462,18 +470,20 @@ export class Game {
     }
     if (this.phase === 'question' || this.phase === 'reveal') {
       const { n, card, votes, endsAt } = this.round;
-      v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, of: card.tic.of || null, media: mediaOf(card.tic), options: this.round.options || this.options };
+      v.round = { n, total: this.deck.length, text: card.tic.text, kind: card.tic.kind, of: card.tic.of || null, media: mediaOf(card.tic), options: this.round.options || this.options, bonus: !!card.bonus };
       if (this.phase === 'reveal' && card.tic.detail) v.round.detail = card.tic.detail;
       if (this.phase === 'question') {
         Object.assign(v.round, { remaining: Math.max(0, endsAt - Date.now()), seconds: this.settings.seconds, myVote: votes[id] || null });
         const fx = this.round.effects;
         v.round.blurred = fx.flou === id && !Object.keys(votes).length;
-        if (fx.melange === id) v.round.labels = this.round.labels;
-        if (fx.lettre === id) v.round.hint = this.round.hint;
-        if (fx.double === id) v.round.double = true;
+        if (fx.flou === id) v.round.flou = true;
+        if (fx.double?.id === id) v.round.boost = fx.double.why;      // 'pouce' ou 'roulette'
+        if (fx.course) v.round.course = true;
+        if (fx.all) v.round.all = true;
       } else {
         const { uses, others, topOther, example } = card.tic;
         Object.assign(v.round, { answer: card.owner, ownerMessages: this.member(card.owner).messages, uses, others, topOther, example, votes, deltas: this.round.deltas, last: n === this.deck.length });
+        if (this.round.effects.course) v.round.racer = this.round.racer || '';   // '' : personne n'a trouvé
       }
     }
     if (this.phase === 'ranking') {
@@ -482,7 +492,7 @@ export class Game {
         n: this.round.n, total: this.deck.length,
         rows: after.map(pid => {
           const p = this.players.get(pid);
-          return { id: pid, name: p.author || p.name || '', score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
+          return { id: pid, name: p.author || p.name || '', shield: this.shields.has(pid), score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
         }),
       };
     }
@@ -494,7 +504,7 @@ export class Game {
     }
     if (this.phase === 'wheel') {
       const p = this.players.get(this.wheel.target);
-      v.wheel = { index: this.wheel.index, shielded: this.wheel.shielded, target: p?.author || p?.name || '', mine: this.wheel.target === id };
+      v.wheel = { index: this.wheel.index, shielded: this.wheel.shielded, target: p?.author || p?.name || '', mine: this.wheel.target === id, names: this.wheel.names };
     }
     if (this.phase === 'end') {
       v.slides = this.slides();

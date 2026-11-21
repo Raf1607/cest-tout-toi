@@ -3,7 +3,7 @@
 /* global qrcode, NoSleep */
 import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
-import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_SPIN_MS, MONTAGE_MS } from './game.js';
+import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_SPIN_MS, ROULETTE_MS, MONTAGE_MS } from './game.js';
 import { BPM, unlockAudio, playPhonk } from './phonk.js';
 import { openRoom, Client, CODE_LENGTH } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
@@ -438,6 +438,7 @@ const ICONS = {
   back: '<path d="M15 18l-6-6 6-6"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>',
   globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/>',
   imageOff: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21M2 2l20 20"/>',
 };
 
@@ -683,23 +684,27 @@ function statLine(r) {
   return `${T('inMessages', fmt(r.uses), fmt(r.ownerMessages))} ${others}`;
 }
 
+// « Manche 4/10 », ou « Question bonus 11/11 » pour la manche ajoutée par la roue.
+const roundLabel = r => T(r.bonus ? 'bonusRound' : 'round', r.n, r.total);
+
 function questionScreen() {
   const r = view.round;
   return `
     <div class="round-top">
       <div class="round-info">
-        <div class="hud"><span>${T('round', r.n, r.total)}</span><span class="timer" data-timer></span></div>
+        <div class="hud"><span>${roundLabel(r)}</span><span class="timer" data-timer></span></div>
         <div class="bar"><i data-bar></i></div>
       </div>
       <div class="vote-count" aria-live="polite"><b data-voted>0</b><span data-present></span><small>${T('votedLabel')}</small></div>
     </div>
-    ${r.double ? `<p class="fx good">${T('bonusDouble')}</p>` : ''}
-    ${r.hint ? `<p class="fx good">${T('bonusLetter', esc(r.hint))}</p>` : ''}
-    ${r.labels ? `<p class="fx bad">${T('malusShuffle')}</p>` : ''}
+    ${r.boost ? `<p class="fx good">${T(r.boost === 'pouce' ? 'fxPouce' : 'fxRoulette')}</p>` : ''}
+    ${r.course ? `<p class="fx good">${T('fxCourse')}</p>` : ''}
+    ${r.all ? `<p class="fx good">${T('fxManche')}</p>` : ''}
+    ${r.flou ? `<p class="fx bad">${T('fxFlou')}</p>` : ''}
     <p class="ask">${T('ask')[r.kind]}</p>
     ${bubble(r)}
     <div class="options">${r.options.map(name =>
-      `<button data-act="vote" data-author="${esc(name)}">${esc(r.labels?.[name] || name)}</button>`).join('')}</div>
+      `<button data-act="vote" data-author="${esc(name)}">${esc(name)}</button>`).join('')}</div>
     <p class="voters"></p>`;
 }
 
@@ -732,7 +737,7 @@ function rankingScreen() {
     <ol class="board" style="height:${rows.length * step}px">${rows.map((p, now) => `
       <li data-now="${now}" data-was="${p.was}" class="${p.id === view.me ? 'me' : ''} ${p.delta > 0 ? 'gain' : p.delta < 0 ? 'loss' : ''} ${p.was > now ? 'rise' : ''}" style="--i:${p.was};height:${step - 8}px;transform:translateY(${p.was * step}px)">
         <em>${p.was + 1}</em>
-        <span class="name">${esc(p.id === view.me ? `${nameOf(p)} ${T('you')}` : nameOf(p))}</span>
+        <span class="name">${esc(p.id === view.me ? `${nameOf(p)} ${T('you')}` : nameOf(p))}${p.shield ? `<i class="shield" role="img" aria-label="${T('wheel').bouclier}">${icon(ICONS.shield)}</i>` : ''}</span>
         ${p.delta ? `<i class="${p.delta > 0 ? 'up' : 'down'}">${p.delta > 0 ? '+' : '−'}${Math.abs(p.delta)}</i>` : ''}
         <u class="${p.was > now ? 'up' : p.was < now ? 'down' : ''}">${p.was > now ? '▲' : p.was < now ? '▼' : ''}</u>
         <b data-from="${p.score - p.delta}" data-to="${p.score}">${p.score - p.delta}</b>
@@ -742,7 +747,7 @@ function rankingScreen() {
 // Roue de la fortune : tous les téléphones affichent le même résultat, tiré par l'hôte.
 function wheelScreen() {
   const angle = 360 / WHEEL.length;
-  const slices = WHEEL.map((s, i) => `var(--${s.kind}${i % 4 < 2 ? '' : '-2'}) ${i * angle}deg ${(i + 1) * angle}deg`).join(',');
+  const slices = WHEEL.map((s, i) => `var(--${s.kind}${i % 2 ? '-2' : ''}) ${i * angle}deg ${(i + 1) * angle}deg`).join(',');
   return `
     <header class="brand small"><h1>${T('wheelTitle')}</h1></header>
     <div class="wheel-box">
@@ -753,13 +758,33 @@ function wheelScreen() {
       <div class="spot"></div>
       <div class="hub"></div>
     </div>
+    <div class="slot" data-slot hidden><b></b></div>
     <p class="wheel-result" data-result></p>`;
 }
 
 function wheelMessage() {
-  const w = view.wheel, seg = WHEEL[w.index], who = esc(w.target || T('newPlayer'));
+  const w = view.wheel, seg = WHEEL[w.index], who = `<b>${esc(w.target || T('newPlayer'))}</b>`;
   if (w.shielded) return T('wheelShield', who, esc(T('wheel')[seg.id]));
-  return T({ double: 'wheelDouble', lettre: 'wheelLetter', bouclier: 'wheelShieldWon', moins2: 'wheelMinus', flou: 'wheelBlur', melange: 'wheelShuffle' }[seg.id], who);
+  const msg = T('wheelSays')[seg.id];
+  return (typeof msg === 'function' ? msg(who) : msg) + (w.mine && w.names ? `<small>${T('itsYou')}</small>` : '');
+}
+
+// Après la roue, pour les cases tirées au hasard : les prénoms défilent comme une machine à sous,
+// ralentissent et s'arrêtent sur le joueur choisi.
+function rollNames(done) {
+  const slot = $app.querySelector('[data-slot]'), label = slot?.querySelector('b');
+  const names = view.wheel.names || [];
+  if (!slot || !names.length) return done();
+  slot.hidden = false;
+  let t = 0, i = Math.floor(Math.random() * names.length), step = 60;
+  while (t + step < ROULETTE_MS - 1100) {
+    const name = names[i++ % names.length];
+    boardTimers.push(setTimeout(() => { label.textContent = name; slot.classList.toggle('tick'); }, t));
+    t += step;
+    step *= 1.12;                       // de plus en plus lent
+  }
+  boardTimers.push(setTimeout(() => { label.textContent = view.wheel.target; slot.classList.add('stop'); }, t));
+  boardTimers.push(setTimeout(done, t + 900));
 }
 
 function spinWheel() {
@@ -775,10 +800,14 @@ function spinWheel() {
     const box = $app.querySelector('[data-result]');
     stage.classList.remove('spinning');
     stage.classList.add('done', view.wheel.shielded ? 'shield' : seg.kind);
-    box.className = `wheel-result show ${view.wheel.shielded ? '' : seg.kind}`;
-    box.innerHTML = wheelMessage();
-    if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(seg.kind === 'bonus' ? 60 : [60, 50, 60]);
-    if (seg.kind === 'bonus' && !view.wheel.shielded) confetti(stage);
+    const announce = () => {
+      box.className = `wheel-result show ${view.wheel.shielded ? '' : seg.kind}`;
+      box.innerHTML = wheelMessage();
+      if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(seg.kind === 'bonus' ? 60 : [60, 50, 60]);
+      if (seg.kind === 'bonus' && !view.wheel.shielded) confetti(stage);
+    };
+    if (view.wheel.names) rollNames(announce);
+    else announce();
   }, WHEEL_SPIN_MS));
 }
 
@@ -880,9 +909,10 @@ function revealScreen() {
   const ownerPlayer = v.players.find(p => p.author === r.answer);
   const rows = v.players.filter(p => r.votes[p.id] || p.author || p.outside).sort((a, b) => b.score - a.score);
   return `
-    <div class="hud"><span>${T('round', r.n, r.total)}</span></div>
+    <div class="hud"><span>${roundLabel(r)}</span></div>
     ${bubble(r)}
     <p class="answer">${T('answer', esc(r.answer))}</p>
+    ${r.racer !== undefined ? `<p class="fx ${r.racer ? 'good' : 'bad'}">${r.racer ? T('courseWon', esc(nameOf(v.players.find(p => p.id === r.racer) || {}))) : T('courseLost')}</p>` : ''}
     <p class="stat">${statLine(r)}</p>
     ${r.example ? `<figure class="example"><figcaption>${esc(r.answer)}</figcaption><p>${highlight(r.example, r.text)}</p></figure>` : ''}
     ${ownerPlayer && r.votes[ownerPlayer.id] && r.votes[ownerPlayer.id] !== r.answer ? `<p class="fun">${T('notEvenOwner', esc(r.answer))}</p>` : ''}
