@@ -449,13 +449,16 @@ const OS_LOGOS = {
 };
 const osLogo = name => `<svg class="os-${name}" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="${OS_LOGOS[name]}"/></svg>`;
 
+// Sélecteur FR / EN, le même en haut de l'accueil, des écrans d'aide et des pages annexes.
+const langSwitch = () => `<div class="lang-switch" role="group" aria-label="Langue / Language">${['fr', 'en'].map(l => `<button data-act="lang" data-lang="${l}" lang="${l}" aria-pressed="${l === lang}">${l.toUpperCase()}</button>`).join('')}</div>`;
+
 // Logo en haut des écrans : un toucher ramène à l'accueil (en partie, après confirmation).
 const homeLogo = () => `<button class="home-logo" data-act="home" aria-label="${T('home')}">Who is <span>bro</span>&nbsp;?</button>`;
 
 function homeScreen() {
   if (joinCode()) return joinScreen();
   return `<div class="home"><div class="home-top">
-    <div class="lang-switch" role="group" aria-label="Langue / Language">${['fr', 'en'].map(l => `<button data-act="lang" data-lang="${l}" lang="${l}" aria-pressed="${l === lang}">${l.toUpperCase()}</button>`).join('')}</div>
+    ${langSwitch()}
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
       <p>${T('tagline')}</p>
@@ -503,6 +506,7 @@ function joinScreen() {
 function howtoScreen() {
   const os = ui.howto === 'android' ? 'android' : 'iphone';
   return `
+    ${langSwitch()}
     <div class="sheet-top"><button class="back" data-act="howto-close" aria-label="${T('cancel')}">${icon(ICONS.back)}</button><h1>${T('howtoTitle', os === 'iphone' ? 'iPhone' : 'Android')}</h1></div>
     <video class="howto-video" src="video/howto-${os}-${lang}.mp4" autoplay muted loop playsinline disablepictureinpicture aria-label="${T('howtoVideo')}"></video>
     <ol class="howto-steps">${T('howtoSteps')[os].map(step => `<li>${step}</li>`).join('')}</ol>
@@ -517,6 +521,7 @@ function howtoScreen() {
 function privacyScreen() {
   const icons = [ICONS.phone, ICONS.chat, ICONS.trash, ICONS.noUser];
   return `
+    ${langSwitch()}
     <div class="sheet-top"><button class="back" data-act="privacy-close" aria-label="${T('cancel')}">${icon(ICONS.back)}</button><h1>${T('privacyTitle')}</h1></div>
     <ul class="privacy-points">${T('privacyPoints').map(([title, text], i) => `
       <li>${icon(icons[i])}<div><b>${title}</b><p>${text}</p></div></li>`).join('')}</ul>
@@ -973,7 +978,13 @@ $app.addEventListener('click', async e => {
     if (ui.screen === 'game' && view?.phase !== 'end' && !confirm(game ? T('quitHost') : T('quitGuest'))) return;
     leaveGame();
   }
-  else if (act === 'lang') { if (el.dataset.lang !== lang) { setLang(el.dataset.lang); saveLang(lang); render(); } }
+  else if (act === 'lang') {
+    if (el.dataset.lang === lang) return;
+    setLang(el.dataset.lang);
+    saveLang(lang);
+    if (params.has('lang')) { params.delete('lang'); history.replaceState(null, '', location.pathname + (params.size ? `?${params}` : '')); }
+    render();
+  }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
   else if (act === 'claim') { ui.pickName = false; ui.memberQuery = ''; send({ t: 'claim', author: el.dataset.author }); }
   else if (act === 'change-name') setUi({ pickName: true });

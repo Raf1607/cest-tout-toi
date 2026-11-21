@@ -47,7 +47,9 @@
   }
   .back { display: inline-block; margin: 8px 0 20px; color: var(--muted); text-decoration: none; font-weight: 600; }
   .back:hover { color: var(--ink); }
-  .lang { float: right; margin: 8px 0 0; color: var(--muted); font-weight: 600; text-decoration: none; }
+  .lang-switch { display: flex; width: fit-content; margin: 4px auto 6px; border: 1px solid var(--line); border-radius: 99px; padding: 2px; }
+  .lang-switch a { padding: 4px 10px; font-size: 12px; font-weight: 700; line-height: 1.2; border-radius: 99px; color: var(--muted); text-decoration: none; }
+  .lang-switch a[aria-current] { background: #2d2839; color: var(--ink); }
   h1, h2 { font-family: var(--display); letter-spacing: -0.01em; }
   h1 { font-size: 34px; line-height: 1.1; margin: 0 0 10px; }
   h1 span { background: var(--accent); color: var(--accent-ink); padding: 0 .14em; border-radius: .2em; }
@@ -68,7 +70,7 @@
 </head>
 <body>
 <main>
-  <a class="lang" href="confidentialite.html" hreflang="fr" lang="fr">Français</a>
+  <nav class="lang-switch" aria-label="Langue / Language"><a href="confidentialite.html" hreflang="fr" lang="fr">FR</a><a href="privacy.html" hreflang="en" lang="en" aria-current="page">EN</a></nav>
   <a class="back" href="./?lang=en">← Back to the game</a>
   <h1>Privacy</h1>
   <p class="lead">What happens to your WhatsApp chat when you play Who is <b>bro</b>&nbsp;?</p>

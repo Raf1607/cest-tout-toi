@@ -69,13 +69,15 @@
   .photo img { display: block; width: 100%; height: auto; max-height: 620px; object-fit: cover; object-position: center 35%; }
   .person div { padding: 16px 18px; }
   .person h2 { margin: 0 0 8px; }
-  .lang { float: right; margin: 8px 0 0; color: var(--muted); font-weight: 600; text-decoration: none; }
+  .lang-switch { display: flex; width: fit-content; margin: 4px auto 6px; border: 1px solid var(--line); border-radius: 99px; padding: 2px; }
+  .lang-switch a { padding: 4px 10px; font-size: 12px; font-weight: 700; line-height: 1.2; border-radius: 99px; color: var(--muted); text-decoration: none; }
+  .lang-switch a[aria-current] { background: #2d2839; color: var(--ink); }
   .listen { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 12px 18px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; text-decoration: none; }
 </style>
 </head>
 <body>
 <main>
-  <a class="lang" href="qui-sommes-nous.html" hreflang="fr" lang="fr">Français</a>
+  <nav class="lang-switch" aria-label="Langue / Language"><a href="qui-sommes-nous.html" hreflang="fr" lang="fr">FR</a><a href="about.html" hreflang="en" lang="en" aria-current="page">EN</a></nav>
   <a class="back" href="./?lang=en">← Back to the game</a>
   <h1>About <span>us</span></h1>
   <p class="lead">A game for friends, dreamed up by a father and his son.</p>
