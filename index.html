@@ -252,13 +252,13 @@
   .round-top { display: flex; align-items: flex-start; gap: 14px; }
   .round-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
   .round-info .bar { margin-top: 0; }
-  .mini { list-style: none; margin: 0; padding: 6px 10px; background: var(--surface); border-radius: 12px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; flex: none; max-width: 46%; }
-  .mini li { display: flex; align-items: center; gap: 6px; }
-  .mini li.off { opacity: .5; }
-  .mini i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; }
-  .mini li.voted i { background: var(--good); border-color: var(--good); }
-  .mini span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mini b { font-family: var(--display); color: var(--accent); }
+  .vote-count { flex: none; display: grid; grid-template-columns: auto auto; align-items: baseline; justify-content: center; padding: 6px 12px; background: var(--surface); border-radius: 12px; text-align: center; }
+  .vote-count b { font: 800 26px/1 var(--display); color: var(--accent); }
+  .vote-count span { font: 700 16px/1 var(--display); color: var(--muted); }
+  .vote-count small { grid-column: 1 / -1; font-size: 12px; margin-top: 2px; }
+  .vote-count.all b { color: var(--good); }
+  /* Le bouton de l'hôte reste en bas de l'écran, même quand la liste des votes est longue. */
+  .sticky-next { position: sticky; bottom: 0; margin: 0 -16px calc(-1 * max(28px, env(safe-area-inset-bottom))); padding: 14px 16px max(16px, env(safe-area-inset-bottom)); background: linear-gradient(to bottom, transparent, var(--bg) 35%); z-index: 2; }
 
   .answer { font: 800 30px/1.15 var(--display); text-align: center; animation: pop .4s cubic-bezier(.2, 1.4, .4, 1); }
   .answer b { color: var(--accent); }
@@ -399,17 +399,17 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211857",
-  "./js/tics.js": "./js/tics.js?v=202611211857",
-  "./js/game.js": "./js/game.js?v=202611211857",
-  "./js/net.js": "./js/net.js?v=202611211857",
-  "./js/media.js": "./js/media.js?v=202611211857",
-  "./js/records.js": "./js/records.js?v=202611211857",
-  "./js/i18n.js": "./js/i18n.js?v=202611211857",
-  "./js/resume.js": "./js/resume.js?v=202611211857",
-  "./js/phonk.js": "./js/phonk.js?v=202611211857"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211907",
+  "./js/tics.js": "./js/tics.js?v=202611211907",
+  "./js/game.js": "./js/game.js?v=202611211907",
+  "./js/net.js": "./js/net.js?v=202611211907",
+  "./js/media.js": "./js/media.js?v=202611211907",
+  "./js/records.js": "./js/records.js?v=202611211907",
+  "./js/i18n.js": "./js/i18n.js?v=202611211907",
+  "./js/resume.js": "./js/resume.js?v=202611211907",
+  "./js/phonk.js": "./js/phonk.js?v=202611211907"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611211857"></script>
+<script type="module" src="js/app.js?v=202611211907"></script>
 </body>
 </html>

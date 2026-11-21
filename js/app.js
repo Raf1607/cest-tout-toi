@@ -691,7 +691,7 @@ function questionScreen() {
         <div class="hud"><span>${T('round', r.n, r.total)}</span><span class="timer" data-timer></span></div>
         <div class="bar"><i data-bar></i></div>
       </div>
-      <ol class="mini" aria-label="${T('ranking')}"></ol>
+      <div class="vote-count" aria-live="polite"><b data-voted>0</b><span data-present></span><small>${T('votedLabel')}</small></div>
     </div>
     ${r.double ? `<p class="fx good">${T('bonusDouble')}</p>` : ''}
     ${r.hint ? `<p class="fx good">${T('bonusLetter', esc(r.hint))}</p>` : ''}
@@ -703,21 +703,17 @@ function questionScreen() {
     <p class="voters"></p>`;
 }
 
-// Mon vote, et le petit classement : les points de chacun et qui a déjà voté (pas pour qui).
+// Mon vote, et combien de joueurs ont déjà voté (pas qui, ni pour qui).
 function patchQuestion() {
   const v = view, r = v.round;
   for (const btn of $app.querySelectorAll('[data-act=vote]')) btn.classList.toggle('on', r.myVote === btn.dataset.author);
   $app.querySelector('.bubble').classList.toggle('blurred', !!r.blurred);
-  const shown = v.players.filter(p => p.author || p.outside || p.voted).sort((a, b) => b.score - a.score);
-  $app.querySelector('.mini').innerHTML = shown.map(p => `
-    <li class="${p.voted ? 'voted' : ''} ${p.connected ? '' : 'off'}">
-      <i aria-label="${p.voted ? T('voted') : T('notVoted')}"></i><span>${p.id === v.me ? T('youShort') : esc(nameOf(p).split(' ')[0])}</span><b>${p.score}</b>
-    </li>`).join('');
   const present = v.players.filter(p => p.connected);
   const voted = present.filter(p => p.voted).length;
-  $app.querySelector('.voters').textContent = voted
-    ? T('votersCount', voted, present.length)
-    : T('firstVote');
+  $app.querySelector('[data-voted]').textContent = voted;
+  $app.querySelector('[data-present]').textContent = `/${present.length}`;
+  $app.querySelector('.vote-count').classList.toggle('all', voted === present.length);
+  $app.querySelector('.voters').textContent = voted ? T('changeMind') : T('firstVote');
 }
 
 function highlight(text, part) {
@@ -904,7 +900,7 @@ function revealScreen() {
       }).join('')}
     </ul>
     ${v.host
-      ? `<div class="actions"><button class="primary big" data-act="next">${T('seeRanking')}</button></div>`
+      ? `<div class="actions sticky-next"><button class="primary big" data-act="next">${T(r.last ? 'seeResults' : 'nextQuestion')}</button></div>`
       : `<p class="wait">${T('waitHost')}</p>`}`;
 }
 
