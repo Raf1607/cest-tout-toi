@@ -142,6 +142,12 @@
   .banner { position: sticky; top: 0; z-index: 2; background: var(--bad); color: #1b0f0d; font-weight: 600; text-align: center; padding: 8px; border-radius: 10px; }
 
   .top .title { color: var(--muted); font-size: 15px; }
+  .group { display: flex; align-items: center; gap: 10px; font: 800 20px/1.2 var(--display); min-width: 0; }
+  .group b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .group svg { width: 22px; height: 22px; flex: none; color: var(--muted); }
+  .group .media-ic { display: inline-flex; flex: none; }
+  .group .media-ic svg { color: var(--good); }
+  .group .media-ic.off svg { color: var(--muted); opacity: .7; }
   .qr { width: min(120px, 30vw); flex: none; background: #fff; border-radius: 10px; padding: 4px; line-height: 0; }
   .qr svg { width: 100%; height: auto; }
 
@@ -362,17 +368,17 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211316",
-  "./js/tics.js": "./js/tics.js?v=202611211316",
-  "./js/game.js": "./js/game.js?v=202611211316",
-  "./js/net.js": "./js/net.js?v=202611211316",
-  "./js/media.js": "./js/media.js?v=202611211316",
-  "./js/records.js": "./js/records.js?v=202611211316",
-  "./js/i18n.js": "./js/i18n.js?v=202611211316",
-  "./js/resume.js": "./js/resume.js?v=202611211316",
-  "./js/phonk.js": "./js/phonk.js?v=202611211316"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211318",
+  "./js/tics.js": "./js/tics.js?v=202611211318",
+  "./js/game.js": "./js/game.js?v=202611211318",
+  "./js/net.js": "./js/net.js?v=202611211318",
+  "./js/media.js": "./js/media.js?v=202611211318",
+  "./js/records.js": "./js/records.js?v=202611211318",
+  "./js/i18n.js": "./js/i18n.js?v=202611211318",
+  "./js/resume.js": "./js/resume.js?v=202611211318",
+  "./js/phonk.js": "./js/phonk.js?v=202611211318"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611211316"></script>
+<script type="module" src="js/app.js?v=202611211318"></script>
 </body>
 </html>

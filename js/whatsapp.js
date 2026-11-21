@@ -48,9 +48,14 @@ function mediaOf(text) {
   return null;
 }
 
+// Nom du groupe d'après le nom du fichier exporté, sans les ajouts du téléphone ou du
+// téléchargement : « (avec médias) », « (1) »…
+const TITLE_EXTRAS = /\s*\((?:(?:avec|sans) m[ée]dias?|with(?:out)? media|iphone|android|\d+)\)\s*$/i;
 export function chatTitle(fileName) {
   const m = /whatsapp.*?(?:avec|with|-)\s+(.+?)(?:\.(?:txt|zip))?$/i.exec(fileName || '');
-  return m ? m[1].trim() : '';
+  let title = m ? m[1].trim() : '';
+  while (TITLE_EXTRAS.test(title)) title = title.replace(TITLE_EXTRAS, '');
+  return title;
 }
 
 export function parseChat(raw, fileName = '') {

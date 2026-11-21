@@ -413,7 +413,7 @@ export class Game {
       id: p.id, author: p.author, score: p.score, connected: p.connected, host: p.id === this.hostId,
       voted: this.phase === 'question' && !!this.round.votes[p.id],
     }));
-    const v = { phase: this.phase, lang: this.lang, code: this.code, title: this.analysis.title, me: id, host: id === this.hostId, players, settings: this.settings };
+    const v = { phase: this.phase, lang: this.lang, code: this.code, title: this.analysis.title, withMedia: !!this.analysis.withMedia, me: id, host: id === this.hostId, players, settings: this.settings };
 
     if (this.phase === 'lobby') {
       v.members = this.analysis.authors.map(a => ({ name: a.name, messages: a.messages, tics: a.tics.length }));

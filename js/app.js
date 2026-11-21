@@ -471,6 +471,8 @@ const ICONS = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   noUser: '<circle cx="10" cy="8" r="4"/><path d="M2 21a8 8 0 0 1 13-6.2M17 17l4 4M21 17l-4 4"/>',
   back: '<path d="M15 18l-6-6 6-6"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>',
+  imageOff: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21M2 2l20 20"/>',
 };
 
 // Logo en haut des écrans : un toucher ramène à l'accueil (en partie, après confirmation).
@@ -560,7 +562,10 @@ function lobbyScreen() {
   const taken = new Map(v.players.filter(p => p.author).map(p => [p.author, p]));
   return `
     ${homeLogo()}
-    <div class="top"><span class="title">${T('quote', esc(v.title))}</span></div>
+    <div class="group">
+      ${icon(ICONS.chat)}<b>${esc(v.title)}</b>
+      <span class="media-ic ${v.withMedia ? '' : 'off'}" role="img" aria-label="${T(v.withMedia ? 'withMedia' : 'withoutMedia')}" title="${T(v.withMedia ? 'withMedia' : 'withoutMedia')}">${icon(v.withMedia ? ICONS.image : ICONS.imageOff)}</span>
+    </div>
     ${v.host ? `
     <section class="card join-qr">
       <div class="qr" data-code="${esc(v.code)}">${qrSvg(inviteUrl(v.code))}</div>

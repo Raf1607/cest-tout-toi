@@ -231,7 +231,7 @@ assert.equal(media.phase, 'end');
   const enName = 'WhatsApp Chat - The Crew (with media).zip';
   const enExp = readZipExport(fileURLToPath(new URL('../samples/' + enName, import.meta.url)));
   const chat = parseChat(enExp.text, enName);
-  assert.equal(chat.title, 'The Crew (with media)');
+  assert.equal(chat.title, 'The Crew');
   assert.ok(chat.medias.some(m => m.kind === 'sticker') && chat.messages.length > 1500, 'export anglais lu');
   const en = new Game(analyze(chat, enExp.files, 'en'), 'ENGL', 'h', () => {});
   en.wheelChance = 0;
