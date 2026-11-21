@@ -33,7 +33,7 @@ const FR = {
   howtoSteps: {
     iphone: [
       'Dans WhatsApp, ouvre la discussion du groupe et touche son nom en haut.',
-      'Descends et touche <i>Exporter la discussion</i>, puis <i>Joindre les médias</i>.',
+      'Descends et touche <i>Exporter la discussion</i>, puis <i>Tous les médias</i>.',
       'Choisis <i>Enregistrer dans Fichiers</i>.',
       'Reviens ici, touche <i>Lancer une partie</i> et choisis le fichier.',
     ],
@@ -235,7 +235,7 @@ const EN = {
   howtoSteps: {
     iphone: [
       'In WhatsApp, open the group chat and tap its name at the top.',
-      'Scroll down, tap <i>Export Chat</i>, then <i>Attach Media</i>.',
+      'Scroll down, tap <i>Export Chat</i>, then <i>All Media</i>.',
       'Pick <i>Save to Files</i>.',
       'Come back here, tap <i>Start a game</i> and pick the file.',
     ],

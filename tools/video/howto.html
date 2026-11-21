@@ -165,7 +165,7 @@
     <!-- iPhone : joindre les médias ? -->
     <div class="scr overlay" id="mediaSheet"><div class="dim"></div>
       <div class="box sheet">
-        <div class="list"><div class="note" data-t="mediaNote"></div><div class="opt" id="optMedia" data-t="attach"></div><div class="opt" data-t="noMedia"></div></div>
+        <div class="list"><div class="note" data-t="mediaNote"></div><div class="opt" data-t="noMedia"></div><div class="opt" data-t="selMedia"></div><div class="opt" id="optMedia" data-t="attach"></div></div>
         <div class="list"><div class="opt bold" data-t="cancel"></div></div>
       </div>
     </div>
@@ -292,7 +292,7 @@ const L = {
     members: 'Inès, Julie, Max, toi', m1: 'Qui ramène les bières samedi ?', m2: 'Pas moi, j\'ai payé les pizzas la dernière fois', m3: 'Je m\'en occupe', m4: 'Max qui esquive, comme d\'hab', m5: 'Haha 😂',
     groupInfo: 'Infos du groupe', groupSub: 'Groupe · 4 membres', r1: 'Médias, liens et docs', r2: 'Messages importants', r3: 'Notifications', r4: 'Fond d\'écran', r5: 'Enregistrer dans Photos', you: 'Toi',
     export: 'Exporter la discussion', clear: 'Effacer la discussion', leave: 'Quitter le groupe',
-    mediaNote: 'Joindre les médias produira une discussion plus lourde.', attach: 'Joindre les médias', noMedia: 'Sans médias', cancel: 'Annuler',
+    mediaNote: 'Exporter la discussion', noMedia: 'Sans médias', selMedia: 'Avec médias sélectionnés', attach: 'Tous les médias', cancel: 'Annuler',
     zipInfo: 'Archive ZIP · 18 Mo', copy: 'Copier', saveFiles: 'Enregistrer dans Fichiers', print: 'Imprimer', onPhone: 'Sur mon iPhone', save: 'Enregistrer', downloads: 'Téléchargements',
     a1: 'Infos du groupe', a2: 'Médias du groupe', a3: 'Rechercher', a4: 'Notifications', a5: 'Fond d\'écran', more: 'Plus', report: 'Signaler', block: 'Quitter le groupe', shortcut: 'Ajouter un raccourci',
     includeQ: 'Inclure les médias ?', includeNote: 'Inclure les médias augmentera la taille de la discussion exportée.', include: 'INCLURE LES MÉDIAS', noMediaA: 'SANS MÉDIAS', cancelA: 'ANNULER',
@@ -300,7 +300,7 @@ const L = {
     tagline: 'Lance un quiz entre potes sur ton groupe WhatsApp.', launch: 'Lancer une partie', noData: 'On ne récupère AUCUNE donnée.', noDataSub: 'Tout reste sur ton tel.',
     recent: 'Récents', justNow: 'À l\'instant · 18 Mo', lastWeek: 'La semaine dernière', reading: 'Lecture de la discussion…', scan: 'Fais scanner ce QR code à tes potes', host: 'Toi', hostTag: 'hôte',
     caps: {
-      iphone: ['Dans WhatsApp, ouvre le groupe et touche <b>son nom</b>', '<b>Exporter la discussion</b>, puis <b>Joindre les médias</b>', '<b>Enregistrer dans Fichiers</b>', 'Reviens ici : <b>Lancer une partie</b> et choisis le fichier'],
+      iphone: ['Dans WhatsApp, ouvre le groupe et touche <b>son nom</b>', '<b>Exporter la discussion</b>, puis <b>Tous les médias</b>', '<b>Enregistrer dans Fichiers</b>', 'Reviens ici : <b>Lancer une partie</b> et choisis le fichier'],
       android: ['Dans WhatsApp, ouvre le groupe et touche <b>⋮</b>', '<b>Plus</b> › <b>Exporter la discussion</b> › <b>Inclure les médias</b>', 'Enregistre le fichier dans <b>Fichiers</b>', 'Reviens ici : <b>Lancer une partie</b> et choisis le fichier'],
       end: 'Tes potes scannent le QR code : <b>c\'est parti !</b>',
     },
@@ -309,7 +309,7 @@ const L = {
     members: 'Inès, Julie, Max, you', m1: 'Who\'s bringing beers on Saturday?', m2: 'Not me, I paid for the pizzas last time', m3: 'I\'ve got it', m4: 'Max dodging, as usual', m5: 'Haha 😂',
     groupInfo: 'Group info', groupSub: 'Group · 4 members', r1: 'Media, links and docs', r2: 'Starred messages', r3: 'Notifications', r4: 'Wallpaper', r5: 'Save to Photos', you: 'You',
     export: 'Export Chat', clear: 'Clear Chat', leave: 'Exit Group',
-    mediaNote: 'Attaching media will generate a larger chat archive.', attach: 'Attach Media', noMedia: 'Without Media', cancel: 'Cancel',
+    mediaNote: 'Export Chat', noMedia: 'Without Media', selMedia: 'With Selected Media', attach: 'All Media', cancel: 'Cancel',
     zipInfo: 'ZIP archive · 18 MB', copy: 'Copy', saveFiles: 'Save to Files', print: 'Print', onPhone: 'On My iPhone', save: 'Save', downloads: 'Downloads',
     a1: 'Group info', a2: 'Group media', a3: 'Search', a4: 'Notifications', a5: 'Wallpaper', more: 'More', report: 'Report', block: 'Exit group', shortcut: 'Add shortcut',
     includeQ: 'Include media?', includeNote: 'Including media will increase the size of the exported chat.', include: 'INCLUDE MEDIA', noMediaA: 'WITHOUT MEDIA', cancelA: 'CANCEL',
@@ -317,7 +317,7 @@ const L = {
     tagline: 'Start a quiz with your friends on your WhatsApp group.', launch: 'Start a game', noData: 'We collect NO data at all.', noDataSub: 'Everything stays on your phone.',
     recent: 'Recents', justNow: 'Just now · 18 MB', lastWeek: 'Last week', reading: 'Reading the chat…', scan: 'Get your friends to scan this QR code', host: 'You', hostTag: 'host',
     caps: {
-      iphone: ['In WhatsApp, open the group and tap <b>its name</b>', '<b>Export Chat</b>, then <b>Attach Media</b>', '<b>Save to Files</b>', 'Come back here: <b>Start a game</b> and pick the file'],
+      iphone: ['In WhatsApp, open the group and tap <b>its name</b>', '<b>Export Chat</b>, then <b>All Media</b>', '<b>Save to Files</b>', 'Come back here: <b>Start a game</b> and pick the file'],
       android: ['In WhatsApp, open the group and tap <b>⋮</b>', '<b>More</b> › <b>Export chat</b> › <b>Include media</b>', 'Save the file to <b>Files</b>', 'Come back here: <b>Start a game</b> and pick the file'],
       end: 'Your friends scan the QR code: <b>let\'s go!</b>',
     },
