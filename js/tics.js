@@ -19,7 +19,7 @@
 // dans un export sans médias) et, dans un export avec médias, le sticker ou le GIF fétiche
 // de chacun (les fichiers identiques sont regroupés grâce à leur taille et leur CRC).
 
-import { memberStats, bestPhotos, cultMessages, montageItems } from './records.js';
+import { memberStats, bestPhotos, cultMessages, montageItems, photoReactions, messageReactions } from './records.js';
 import { DICT } from './i18n.js';
 
 const MAX_MESSAGES = 60000;   // au-delà, on ne garde que les plus récents
@@ -368,6 +368,7 @@ function analyzeAt(chat, files, level, lang) {
   // Sticker et GIF fétiches (export avec médias) : le même fichier envoyé encore et encore.
   const signatures = new Map();
   const photos = names.map(() => []);
+  const shots = files.size ? photoReactions(chat, files) : new Map();
   for (const m of medias) {
     const f = m.file && files.get(m.file);
     if (!f) continue;
@@ -437,6 +438,7 @@ function analyzeAt(chat, files, level, lang) {
 
   // « Qui a écrit ça ? » : les messages les plus typiques de chacun, ceux qui accumulent plusieurs
   // de ses tournures (comptées une fois par famille : « du coup » et « Du coup… » ne font qu'une).
+  const reacted = messageReactions(chat);
   const weights = candidates.map(list => new Map(list.filter(t => !/^[#@]/.test(t.key)).map(t => [t.key, Math.log2(Math.min(t.lift, 64))])));
   const typical = names.map(() => []);
   const official = picked.map(list => new Map(list.map(t => [t.key, t.text])));   // ses tics retenus, pour la révélation
@@ -464,8 +466,10 @@ function analyzeAt(chat, files, level, lang) {
       else words.forEach(w => covered.add(w));
     }
     if (groups.size < 2) return;
-    const score = [...groups.values()].reduce((x, [v]) => x + v, 0) + Math.random();
-    typical[a].push({ text: m.text, score, groups: [...groups.keys()].sort().join('|'), found: shown.length ? shown : [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
+    // Un message qui a fait réagir le groupe passe devant : chaque emoji en réaction vaut une tournure.
+    const r = reacted.get(m.author + '\n' + m.text);
+    const score = [...groups.values()].reduce((x, [v]) => x + v, 0) + 1.5 * Math.min(r?.reactions || 0, 8) + 0.3 * Math.min(r?.score || 0, 10) + Math.random();
+    typical[a].push({ text: m.text, score, reactions: r?.reactions || 0, emojis: r?.emojis || [], groups: [...groups.keys()].sort().join('|'), found: shown.length ? shown : [...groups.values()].sort((x, y) => y[0] - x[0]).map(([, k]) => k) });
   });
   typical.forEach((list, a) => {
     list.sort((x, y) => y.score - x.score);
@@ -478,7 +482,7 @@ function analyzeAt(chat, files, level, lang) {
     for (const t of kept) {
       picked[a].push({
         key: '=' + t.text, kind: 'message', text: t.text, uses: 0, others: 0, topOther: null, lift: 0,
-        detail: L.typical(names[a], t.found.slice(0, 3)),
+        detail: L.typical(names[a], t.found.slice(0, 3)) + (t.reactions >= 2 ? ' ' + L.typicalReacted(t.reactions, t.emojis.map(([e, n]) => (n > 1 ? `${e} ×${n}` : e)).join(' ')) : ''),
       });
     }
   });
@@ -489,12 +493,14 @@ function analyzeAt(chat, files, level, lang) {
       messages: perAll[a],
       tics: picked[a].map(({ text, kind, uses, others, topOther, lift, example = null, file = null, of = null, detail = null }) =>
         ({ text, kind, uses, others, topOther, lift: Math.round(lift * 10) / 10, example, file, of, detail })),
-      photos: shuffle(photos[a]).slice(0, 40),
+      // Photos : celles qui ont le plus fait réagir d'abord (score de réaction), au hasard à égalité.
+      photos: shuffle(photos[a].map(file => ({ file, score: shots.get(file)?.score || 0 })))
+        .sort((x, y) => y.score - x.score).slice(0, 40),
       photoCount: photos[a].length,
       stats: records.get(name) || null,
     }))
     .sort((x, y) => y.messages - x.messages);
 
-  const slideshow = files.size ? bestPhotos(chat, files) : [];
-  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors, slideshow, lang, cults: cultMessages(chat, 8, lang), montage: files.size ? montageItems(chat, files) : [] };
+  const slideshow = files.size ? bestPhotos(chat, files, 10, shots) : [];
+  return { title: chat.title, messageCount: M + medias.length, withMedia: files.size > 0, level, authors, slideshow, lang, cults: cultMessages(chat, 8, lang, reacted), montage: files.size ? montageItems(chat, files, 24, shots) : [] };
 }

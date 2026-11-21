@@ -424,4 +424,31 @@ assert.equal(media.phase, 'end');
   assert.deepEqual(mix.candidates(), ['Inès', 'Karim B'], 'deux membres en jeu, absents décochés : rien de plus');
 }
 
+// Composition de la partie : chaque joueur présent a sa question, la réserve n'est la seule question
+// de personne, les photos sont les plus commentées, les titres et le culte sont bien joués.
+{
+  const shots = media.analysis.authors.flatMap(a => a.photos);
+  const best = Math.max(...shots.map(p => p.score));
+  assert.ok(best > 0 && media.analysis.authors.every(a => a.photos.every((p, i) => !i || a.photos[i - 1].score >= p.score)), 'photos triées par réactions');
+  for (let g = 0; g < 60; g++) {
+    const m = new Game(media.analysis, 'COMP', 'h', () => {});
+    m.wheelChance = 0;
+    ['h', 'b'].forEach(id => m.join(id));
+    m.handle('h', { t: 'claim', author: 'Julie Moreau' });
+    m.handle('b', { t: 'claim', author: 'Inès' });
+    m.handle('h', { t: 'settings', settings: { rounds: 10, photos: true, absent: true } });
+    m.handle('h', { t: 'start' });
+    const played = m.deck.slice(0, 10);
+    assert.equal(played.length, 10);
+    for (const name of ['Julie Moreau', 'Inès']) assert.ok(played.some(c => c.owner === name), `${name} est la réponse d'au moins une manche`);
+    assert.ok(played.some(c => c.tic.kind === 'culte') && played.some(c => c.tic.kind === 'record'), 'titres et culte joués');
+    assert.equal(played.filter(c => c.tic.kind === 'photo').length, 2, 'deux photos sur dix manches');
+    assert.ok(played.filter(c => c.tic.kind === 'message').length <= 2, 'pas plus de deux « qui a écrit ça ? »');
+    assert.ok(['Julie Moreau', 'Inès'].includes(played[0].owner), 'la première question porte sur un joueur');
+    assert.ok(played.every((c, i) => !i || c.owner !== played[i - 1].owner), 'jamais deux fois de suite le même');
+    assert.ok(m.deck.every((c, i, d) => !i || i < 10 || c.tic !== d[i - 1].tic), 'réserve distincte');
+    clearTimeout(m.timer);
+  }
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));
