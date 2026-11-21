@@ -604,13 +604,6 @@ function lobbyScreen() {
       ${icon(ICONS.chat)}<b>${esc(v.title)}</b>
       <span class="media-ic ${v.withMedia ? '' : 'off'}" role="img" aria-label="${T(v.withMedia ? 'withMedia' : 'withoutMedia')}">${icon(v.withMedia ? ICONS.image : ICONS.imageOff)}</span>
     </div>
-    ${v.host ? `
-    <section class="card join-qr">
-      <div class="qr" data-code="${esc(v.code)}">${qrSvg(inviteUrl(v.code))}</div>
-      <p>${T('scanToJoin')}</p>
-      <p class="remote">${T('remoteFriends')} <button class="link" data-act="share">${T('sendLink')}</button></p>
-    </section>` : ''}
-
     ${v.waiting?.length ? `
     <section class="card knock">
       <h2>${T('knockTitle')}</h2>
@@ -618,6 +611,13 @@ function lobbyScreen() {
       ${v.waiting.map(w => `<div class="ask"><span>${esc(w.name || T('someone'))}</span>
         <button class="small" data-act="admit" data-id="${esc(w.id)}" data-ok="0">${T('refuse')}</button>
         <button class="small primary" data-act="admit" data-id="${esc(w.id)}" data-ok="1">${T('accept')}</button></div>`).join('')}
+    </section>` : ''}
+
+    ${v.host ? `
+    <section class="card join-qr">
+      <div class="qr" data-code="${esc(v.code)}">${qrSvg(inviteUrl(v.code))}</div>
+      <p>${T('scanToJoin')}</p>
+      <p class="remote">${T('remoteFriends')} <button class="link" data-act="share">${T('sendLink')}</button></p>
     </section>` : ''}
 
     <h2>${T('whoAreYou')}</h2>
