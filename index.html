@@ -83,8 +83,12 @@
   .privacy-badge b { font: 700 16px/1.25 var(--display); }
   .privacy-badge small { color: var(--muted); font-size: 14px; font-weight: 500; }
   .privacy-badge u { color: var(--good); text-underline-offset: 3px; margin-left: 2px; }
-  .how-label { text-align: center; color: var(--ink); font-weight: 600; font-size: 15px; margin-top: 4px; }
-  .how-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: -4px; }
+  .how { display: flex; flex-direction: column; gap: 10px; }
+  .how-label { text-align: center; color: var(--ink); font-weight: 600; font-size: 15px; }
+  .lang-switch { position: absolute; top: 0; right: 0; display: flex; border: 1px solid var(--line); border-radius: 99px; padding: 2px; z-index: 1; }
+  .lang-switch button { padding: 4px 10px; font-size: 12px; font-weight: 700; border: 0; border-radius: 99px; background: none; color: var(--muted); }
+  .lang-switch button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); }
+  .how-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .how-buttons button svg { width: 20px; height: 20px; }
   .how-buttons .os-apple { color: var(--ink); margin-top: -3px; }
   .how-buttons .os-android { color: #3ddc84; }
@@ -92,7 +96,7 @@
   .howto-steps { margin: 18px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 16px; }
   .howto-steps li::marker { color: var(--accent); font-weight: 800; }
   .howto-tip { color: var(--muted); font-size: 14px; margin-top: 14px; }
-  .home { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; margin-bottom: -12px; }
+  .home { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; margin-bottom: -12px; }
   .friend { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
   .friend h2 { margin: 0; font-size: 17px; }
   @media (min-width: 360px) { .friend h2 { white-space: nowrap; } }
@@ -116,7 +120,7 @@
   .foot a:hover, .foot .link:hover { color: var(--ink); }
   .foot .link { padding: 0; font-size: 15px; font-weight: 600; text-decoration: none; color: var(--muted); }
 
-  .brand { text-align: center; padding: 10px 0 0; }
+  .brand { text-align: center; padding: 30px 0 0; }
   .brand h1 { font-size: 46px; line-height: 1; font-weight: 800; }
   .brand h1 span {
     background: var(--accent); color: var(--accent-ink); padding: 0 .16em; border-radius: .2em;
@@ -389,17 +393,17 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211508",
-  "./js/tics.js": "./js/tics.js?v=202611211508",
-  "./js/game.js": "./js/game.js?v=202611211508",
-  "./js/net.js": "./js/net.js?v=202611211508",
-  "./js/media.js": "./js/media.js?v=202611211508",
-  "./js/records.js": "./js/records.js?v=202611211508",
-  "./js/i18n.js": "./js/i18n.js?v=202611211508",
-  "./js/resume.js": "./js/resume.js?v=202611211508",
-  "./js/phonk.js": "./js/phonk.js?v=202611211508"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211510",
+  "./js/tics.js": "./js/tics.js?v=202611211510",
+  "./js/game.js": "./js/game.js?v=202611211510",
+  "./js/net.js": "./js/net.js?v=202611211510",
+  "./js/media.js": "./js/media.js?v=202611211510",
+  "./js/records.js": "./js/records.js?v=202611211510",
+  "./js/i18n.js": "./js/i18n.js?v=202611211510",
+  "./js/resume.js": "./js/resume.js?v=202611211510",
+  "./js/phonk.js": "./js/phonk.js?v=202611211510"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611211508"></script>
+<script type="module" src="js/app.js?v=202611211510"></script>
 </body>
 </html>

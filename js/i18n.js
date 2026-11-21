@@ -69,7 +69,6 @@ const FR = {
   videoFile: 'video/who-is-bro.mp4',
   about: 'Qui sommes-nous&nbsp;?',
   aboutPage: 'qui-sommes-nous.html',
-  otherLang: 'English',
   // Hôte
   reading: 'Lecture de la discussion…',
   notAChat: 'Ce fichier ne ressemble pas à un export de discussion WhatsApp, ou la discussion est trop courte.',
@@ -277,7 +276,6 @@ const EN = {
   videoFile: 'video/who-is-bro-en.mp4',
   about: 'About us',
   aboutPage: 'about.html',
-  otherLang: 'Français',
   reading: 'Reading the chat…',
   notAChat: "This file doesn't look like a WhatsApp chat export, or the chat is too short.",
   analysing: (m, f) => `Analyzing ${m} messages${f ? ` and ${f} media files` : ''}…`,

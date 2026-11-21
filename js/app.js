@@ -497,6 +497,7 @@ const homeLogo = () => `<button class="home-logo" data-act="home" aria-label="${
 function homeScreen() {
   if (joinCode()) return joinScreen();
   return `<div class="home">
+    <div class="lang-switch" role="group" aria-label="Langue / Language">${['fr', 'en'].map(l => `<button data-act="lang" data-lang="${l}" lang="${l}" aria-pressed="${l === lang}">${l.toUpperCase()}</button>`).join('')}</div>
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
       <p>${T('tagline')}</p>
@@ -507,6 +508,8 @@ function homeScreen() {
     <section class="host">
       <label class="button primary big file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <p class="hint">${T('importHint')}</p>
+    </section>
+    <section class="how">
       <p class="how-label">${T('howItWorks')}</p>
       <div class="how-buttons">
         <button data-act="howto" data-os="iphone">${osLogo('apple')}iPhone</button>
@@ -521,7 +524,6 @@ function homeScreen() {
     <footer class="foot">
       <a href="${T('videoFile')}">${T('video')}</a>
       <a href="${T('aboutPage')}">${T('about')}</a>
-      <button class="link" data-act="lang" lang="${lang === 'fr' ? 'en' : 'fr'}">${T('otherLang')}</button>
     </footer></div>`;
 }
 
@@ -1017,7 +1019,7 @@ $app.addEventListener('click', async e => {
     leaveGame();
   }
   else if (act === 'scan-cancel') { stopScan(); setUi({ screen: 'home' }); }
-  else if (act === 'lang') { setLang(lang === 'fr' ? 'en' : 'fr'); saveLang(lang); render(); }
+  else if (act === 'lang') { if (el.dataset.lang !== lang) { setLang(el.dataset.lang); saveLang(lang); render(); } }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
   else if (act === 'claim') { ui.pickName = false; ui.memberQuery = ''; send({ t: 'claim', author: el.dataset.author }); }
   else if (act === 'change-name') setUi({ pickName: true });
