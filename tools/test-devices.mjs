@@ -44,12 +44,12 @@ const SCENARIOS = [
     players: [device('iPhone SE', 'iPhone SE'), device('Pixel 7', 'Pixel 7'), device('Firefox Android', 'firefox')] },
   { name: 'en-android-hote', locale: 'en-US', zip: 'WhatsApp Chat - The Crew (with media).zip',
     players: [device('Galaxy S9+', 'Galaxy S9+'), device('iPhone 15 Pro Max', 'iPhone 15 Pro Max'), device('Galaxy Tab S9', 'Galaxy Tab S9')] },
-  { name: 'fr-txt-ipad', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (iPhone).txt', rounds: 6,
+  { name: 'fr-txt-ipad', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (iPhone).txt', rounds: 6, quitFromLobby: true,
     players: [device('iPad Mini', 'iPad Mini'), device('Galaxy A55', 'Galaxy A55')] },
 ];
 
 const problems = [];
-const report = (who, msg) => { problems.push(`${who} : ${msg}`); console.log(`  ✗ ${who} : ${msg}`); };
+const report = (who, msg) => { problems.push(`${who} : ${msg}`); console.log(`  ✗ ${new Date().toISOString().slice(17, 23)} ${who} : ${msg}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function open(browsers, d, locale, scenario) {
@@ -57,7 +57,7 @@ async function open(browsers, d, locale, scenario) {
   const context = await browsers[d.engine].newContext({ ...d.options, locale });
   const page = await context.newPage();
   const who = `${scenario} / ${d.label}`;
-  page.on('pageerror', e => report(who, 'erreur JS : ' + e.message));
+  page.on('pageerror', e => report(who, 'erreur JS : ' + e.message + (process.env.STACK ? ' @ ' + (e.stack || '').split('\n').slice(0, 4).join(' / ') : '')));
   page.on('console', m => { if (m.type() === 'error' && !/peerjs|Could not connect|ERR_|favicon|Failed to load resource|Wake Lock/i.test(m.text())) report(who, 'console : ' + m.text()); });
   return { page, context, who, label: d.label, seen: new Set() };
 }
@@ -102,8 +102,9 @@ async function play(sc) {
     // Accueil sur tous les appareils, puis l'hôte importe la discussion.
     for (const p of ps) { await p.page.goto(BASE); await snap(p, 'accueil', sc.name); }
     await host.page.setInputFiles('input[data-input="file"]', join(ROOT, 'samples', sc.zip));
-    await host.page.waitForSelector('.code', { timeout: 60000 });
-    const code = (await host.page.textContent('.code')).trim();
+    // Le code n'est jamais affiché : il est dans le lien du QR code (les invités « scannent » ce lien).
+    await host.page.waitForSelector('.qr[data-code]', { timeout: 60000 });
+    const code = await host.page.getAttribute('.qr[data-code]', 'data-code');
     console.log(`  code ${code}`);
     await host.page.click('[data-act="set"][data-key="rounds"][data-value="6"]');
     await host.page.click('[data-act="set"][data-key="seconds"][data-value="15"]');
@@ -175,6 +176,26 @@ async function play(sc) {
       console.log(`  ${p.label} : ${ranked} au classement, ${slides} photo(s) dans le diaporama, écrans vus : ${[...p.seen].join(' ')}`);
       if (ranked !== ps.length) report(p.who, `${ranked} joueurs au classement au lieu de ${ps.length}`);
     }
+    const [host2, ...guests2] = ps;
+    if (sc.quitFromLobby) {
+      // L'hôte relance, puis quitte depuis le salon (après confirmation) : les invités reviennent à l'accueil, prévenus.
+      await host2.page.click('[data-act="replay"]');
+      await host2.page.waitForSelector('.qr[data-code]', { timeout: 10000 });
+      host2.page.once('dialog', d => d.accept());
+      await host2.page.click('[data-act="home"]');
+      await host2.page.waitForSelector('[data-act="privacy"]', { timeout: 10000 });
+      for (const g of guests2) {
+        await g.page.waitForSelector('.notice', { timeout: 10000 }).catch(() => report(g.who, "pas prévenu que l'hôte a quitté"));
+        if (await screenOf(g) !== 'home') report(g.who, `après le départ de l'hôte, écran « ${await screenOf(g)} »`);
+      }
+    } else {
+      // Retour à l'accueil depuis le classement final, pour chacun.
+      for (const p of ps) {
+        if (process.env.STACK) console.log('  clic accueil', p.label, new Date().toISOString().slice(17, 23));
+        await p.page.click('[data-act="home"]');
+        await p.page.waitForSelector('[data-act="privacy"]', { timeout: 10000 }).catch(() => report(p.who, "pas de retour à l'accueil"));
+      }
+    }
   } catch (e) {
     report(sc.name, 'arrêt : ' + e.message.split('\n')[0]);
     for (const p of ps) await p.page.screenshot({ path: `${OUT}/${sc.name}--${p.label.replace(/\W+/g, '-')}--ERREUR.png` }).catch(() => {});
@@ -192,7 +213,8 @@ async function pages() {
     const p = await open(browsers, d, 'fr-FR', 'pages');
     for (const url of ['confidentialite.html', 'privacy.html', 'qui-sommes-nous.html', 'about.html', '?lang=en']) {
       await p.page.goto(BASE + url);
-      await p.page.waitForLoadState('networkidle');
+      await p.page.waitForLoadState('load');
+      await sleep(800);
       const w = await p.page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
       if (w) report(p.who, `${url} défile horizontalement`);
       await p.page.screenshot({ path: `${OUT}/pages--${d.label.replace(/\W+/g, '-')}--${url.replace(/\W+/g, '')}.png`, fullPage: true });

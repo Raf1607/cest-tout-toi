@@ -94,7 +94,7 @@ export class Client {
     }, 2000);
   }
 
-  send(msg) { if (this.conn?.open) this.conn.send(msg); }
+  send(msg) { try { if (this.conn?.open) this.conn.send(msg); } catch { this.retry(); } }
 
   close() {
     clearTimeout(this.timer);

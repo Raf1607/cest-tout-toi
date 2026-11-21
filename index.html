@@ -70,8 +70,32 @@
   .small { padding: 8px 12px; font-size: 14px; }
   .link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 8px; font-weight: 500; }
   input[type=file] { display: none; }
-  .privacy { color: var(--muted); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; align-self: flex-start; }
-  .privacy:hover { color: var(--ink); }
+  .home-logo { align-self: flex-start; background: none; border: 0; padding: 4px 0; font: 800 22px/1 var(--display); color: var(--ink); gap: 0; }
+  .home-logo span { background: var(--accent); color: var(--accent-ink); padding: 0 .16em; margin: 0 .18em; border-radius: .2em; display: inline-block; transform: rotate(-3deg); }
+  .host { display: flex; flex-direction: column; gap: 12px; }
+  .host .hint { font-size: 14px; margin-top: -4px; }
+  .privacy-badge {
+    width: 100%; justify-content: flex-start; text-align: left; gap: 12px; padding: 12px 14px; font-size: 15px;
+    background: rgba(82, 209, 143, .12); border-color: rgba(82, 209, 143, .45);
+  }
+  .privacy-badge svg { width: 26px; height: 26px; flex: none; color: var(--good); }
+  .privacy-badge span { display: flex; flex-direction: column; gap: 2px; }
+  .privacy-badge u { color: var(--good); font-size: 14px; text-underline-offset: 3px; }
+  .friend { display: flex; flex-direction: column; gap: 10px; text-align: center; border-top: 1px solid var(--line); padding-top: 20px; margin-top: 10px; }
+  .friend h2 { justify-content: center; margin: 0; }
+  .friend p { color: var(--muted); font-size: 15px; }
+  .join-qr { align-items: center; text-align: center; }
+  .join-qr .qr { width: min(260px, 68vw); padding: 10px; border-radius: 16px; }
+  .sheet-top { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
+  .sheet-top h1 { font-size: 30px; }
+  .back { background: none; border: 0; padding: 6px; margin-left: -8px; }
+  .back svg { width: 26px; height: 26px; }
+  .privacy-points { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 20px; }
+  .privacy-points li { display: flex; gap: 14px; align-items: flex-start; }
+  .privacy-points svg { width: 30px; height: 30px; flex: none; color: var(--good); margin-top: 2px; }
+  .privacy-points b { display: block; font: 700 17px/1.3 var(--display); }
+  .privacy-points p { color: var(--muted); font-size: 15px; margin-top: 4px; }
+  .privacy-more { text-align: center; color: var(--muted); padding: 8px; text-underline-offset: 3px; }
   .foot { display: flex; justify-content: center; gap: 22px; flex-wrap: wrap; padding: 10px 0 4px; font-size: 15px; }
   .foot a { color: var(--muted); text-decoration: none; font-weight: 600; }
   .foot a:hover, .foot .link:hover { color: var(--ink); }
@@ -95,17 +119,14 @@
   .card p { color: var(--muted); font-size: 15px; }
   .join { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
   .join input {
-    min-width: 0; font: 800 26px var(--display); letter-spacing: .2em; text-align: center; text-transform: uppercase;
+    min-width: 0; font: 600 18px system-ui, sans-serif; text-align: center;
     background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 8px;
   }
-  .join input[name="code"] { grid-column: 1 / -1; }
-  .join input[name="name"] { font: 600 18px system-ui, sans-serif; letter-spacing: 0; text-transform: none; }
   .join input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   details { font-size: 15px; color: var(--muted); }
   details summary { cursor: pointer; color: var(--ink); }
   details p { margin-top: 8px; }
   .notice { background: rgba(82, 209, 143, .12); border: 1px solid var(--good); color: var(--ink); padding: 12px 14px; border-radius: 12px; }
-  .scan-btn { width: 100%; }
   .share-game { width: 100%; margin-top: 4px; }
   .scan { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; text-align: center; color: var(--muted); }
   .scan-view { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; aspect-ratio: 3 / 4; }
@@ -125,7 +146,6 @@
   .invite .label { font-size: 13px; }
   .invite h2 { font-size: 17px; margin-bottom: 4px; }
   .url { font: 600 14px ui-monospace, Menlo, monospace; color: var(--ink) !important; overflow-wrap: anywhere; margin-top: 6px; user-select: all; }
-  .invite .code { font: 800 clamp(28px, 9.5vw, 34px)/1.1 var(--display); letter-spacing: .08em; color: var(--accent) !important; margin-bottom: 8px; }
 
   .knock { border-color: var(--accent); }
   .knock .ask { display: flex; align-items: center; gap: 8px; }
@@ -344,17 +364,17 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611131426",
-  "./js/tics.js": "./js/tics.js?v=202611131426",
-  "./js/game.js": "./js/game.js?v=202611131426",
-  "./js/net.js": "./js/net.js?v=202611131426",
-  "./js/media.js": "./js/media.js?v=202611131426",
-  "./js/records.js": "./js/records.js?v=202611131426",
-  "./js/i18n.js": "./js/i18n.js?v=202611131426",
-  "./js/resume.js": "./js/resume.js?v=202611131426",
-  "./js/phonk.js": "./js/phonk.js?v=202611131426"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211132",
+  "./js/tics.js": "./js/tics.js?v=202611211132",
+  "./js/game.js": "./js/game.js?v=202611211132",
+  "./js/net.js": "./js/net.js?v=202611211132",
+  "./js/media.js": "./js/media.js?v=202611211132",
+  "./js/records.js": "./js/records.js?v=202611211132",
+  "./js/i18n.js": "./js/i18n.js?v=202611211132",
+  "./js/resume.js": "./js/resume.js?v=202611211132",
+  "./js/phonk.js": "./js/phonk.js?v=202611211132"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611131426"></script>
+<script type="module" src="js/app.js?v=202611211132"></script>
 </body>
 </html>

@@ -45,6 +45,8 @@ let endsAt = 0;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => n.toLocaleString(T('locale'));
 const send = msg => (game ? game.handle(myId, msg) : client?.send(msg));
+// Envoi à un invité : un canal qui se ferme (téléphone en veille, départ) peut refuser l'envoi.
+const post = (conn, msg) => { try { if (conn.open) conn.send(msg); } catch { /* il se reconnectera */ } };
 // Ouverte sur l'ordinateur qui fait tourner serve.py, la page connaît l'adresse du jeu sur le
 // Wi-Fi : c'est elle qu'on donne aux téléphones (localhost ne mènerait nulle part).
 let lanUrl = null;
@@ -125,7 +127,7 @@ async function launch(analysis, entries, file, snap = null) {
     // Le média de la manche est préparé une fois, puis envoyé à chaque téléphone (et à ceux qui
     // arrivent ou se reconnectent en cours de manche). Celui de la manche suivante part en avance.
     const shared = new Map();   // id → morceaux prêts à envoyer, ou null pendant la préparation
-    const sendChunks = (conn, chunks) => { for (const c of chunks) if (conn.open) conn.send(c); };
+    const sendChunks = (conn, chunks) => { for (const c of chunks) post(conn, c); };
     async function share(tic) {
       const id = tic?.file;
       if (!id || shared.has(id) || !entries.has(id)) return;
@@ -172,7 +174,7 @@ async function launch(analysis, entries, file, snap = null) {
       const conn = conns.get(pid);
       conns.delete(pid);
       if (!conn?.open) return;
-      conn.send({ t: 'refused', why });
+      post(conn, { t: 'refused', why });
       setTimeout(() => conn.close(), 500);
     }
     const room = await openRoom(conn => {
@@ -185,7 +187,7 @@ async function launch(analysis, entries, file, snap = null) {
           if (old && old !== conn) old.close();
           const answer = game.request(pid, typeof msg.name === 'string' ? msg.name : '');
           if (answer === 'ok') catchUp(conn);
-          else if (answer === 'wait') conn.send({ t: 'wait' });
+          else if (answer === 'wait') post(conn, { t: 'wait' });
           else turnAway(pid, answer);
         } else if (pid && game.players.has(pid)) game.handle(pid, msg);   // les téléphones en attente ne peuvent rien faire
       });
@@ -206,14 +208,15 @@ async function launch(analysis, entries, file, snap = null) {
       for (const [pid, conn] of conns) {
         if (!conn.open || !game.players.has(pid)) continue;     // seuls les joueurs acceptés reçoivent la partie
         if (!admitted.has(pid)) { admitted.add(pid); catchUp(conn); }
-        conn.send({ t: 'state', s: game.view(pid) });
+        post(conn, { t: 'state', s: game.view(pid) });
       }
       show(game.view(myId));
       shareRound();
       persist();
     };
     game.onAdmit = turnAway;
-    window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
+    window.addEventListener('beforeunload', confirmUnload);
+    endGame = () => { for (const conn of conns.values()) post(conn, { t: 'ended' }); };
     ui.screen = 'game';
     game.changed();
 }
@@ -228,6 +231,24 @@ async function saveSession(analysis, file) {
     const raw = file && file.size <= RAW_MAX ? { name: file.name, type: file.type, data: await file.arrayBuffer() } : null;
     await saveSave(key, { ...value, file: raw }).catch(err => console.warn('Sauvegarde impossible', err));
   }
+}
+
+function confirmUnload(e) { e.preventDefault(); e.returnValue = ''; }
+let endGame = null;   // l'hôte prévient les invités que la partie s'arrête
+
+// Retour à l'accueil depuis une partie : on repart d'une page neuve (salle fermée, minuteurs arrêtés).
+// L'hôte prévient d'abord les invités et efface sa sauvegarde.
+async function leaveGame() {
+  saveLang(lang);
+  if (game) {
+    endGame?.();
+    window.removeEventListener('beforeunload', confirmUnload);
+    store.remove('ctt-hosting');
+    await clearSaves(myId);
+    await new Promise(r => setTimeout(r, 300));   // le temps que le message parte
+  }
+  client?.close();
+  location.replace(location.pathname);
 }
 
 // Au chargement : l'hôte a rechargé sa page en pleine partie ? On la reprend, avec le même code.
@@ -252,39 +273,54 @@ async function resumeHost() {
 
 // ——— Invité ———
 
+// Le code de la partie n'est jamais affiché : il voyage dans le lien du QR code (…?p=CODE).
+const joinCode = () => (params.get('p') || '').toUpperCase().replace(/[^A-Z]/g, '');
+function forgetCode() {
+  params.delete('p');
+  history.replaceState(null, '', location.pathname);
+}
+
 function join(code, name = store.get('ctt-name') || '') {
   code = code.toUpperCase().replace(/[^A-Z]/g, '');
-  if (code.length !== CODE_LENGTH) return setUi({ screen: 'home', error: T('codeLength', CODE_LENGTH) });
+  if (code.length !== CODE_LENGTH) { forgetCode(); return setUi({ screen: 'home', error: T('badCode') }); }
   name = name.trim().slice(0, 24);
   if (!name) return setUi({ screen: 'home', error: T('nameNeeded') });
   store.set('ctt-name', name);
-  if (params.get('p') !== code) history.replaceState(null, '', `?p=${code}`);
-  setUi({ screen: 'busy', busy: T('connecting', code), error: '', notice: '' });
+  if (params.get('p') !== code) { params.set('p', code); history.replaceState(null, '', `?p=${code}`); }
+  setUi({ screen: 'busy', busy: T('connecting'), error: '', notice: '' });
   client?.close();
   const inbox = new MediaInbox((id, url) => { mediaCache.set(id, url); mediaArrived(id); });
   client = new Client(code, myId, name, {
     onMessage(msg) {
       if (msg?.t === 'state') { ui.screen = 'game'; show(msg.s); }
-      else if (msg?.t === 'wait') setUi({ screen: 'busy', busy: T('waiting', code) });
-      else if (msg?.t === 'refused') {
+      else if (msg?.t === 'wait') setUi({ screen: 'busy', busy: T('waiting') });
+      else if (msg?.t === 'ended' && view?.phase === 'end') {
+        // On garde le classement à l'écran. La connexion se ferme d'elle-même quand l'hôte part :
+        // la couper tout de suite ferait échouer les photos qu'il est encore en train d'envoyer.
+        const done = client;
+        client = null;
+        setTimeout(() => done.close(), 5000);
+      }
+      else if (msg?.t === 'refused' || msg?.t === 'ended') {
         client?.close();
         client = null;
         view = null;
-        history.replaceState(null, '', location.pathname);
-        setUi({ screen: 'home', status: 'ok', error: msg.why === 'closed' ? T('closed') : T('refused') });
+        forgetCode();
+        if (msg.t === 'ended') setUi({ screen: 'home', status: 'ok', error: '', notice: T('ended') });
+        else setUi({ screen: 'home', status: 'ok', error: msg.why === 'closed' ? T('closed') : T('refused') });
       }
       else if (msg?.t === 'media') inbox.add(msg);
     },
     onStatus(status) {
       const errors = {
-        notfound: T('notFound', code),
+        notfound: T('notFound'),
         offline: T('offline'),
         gone: T('gone'),
       };
       if (errors[status]) {
         client = null;
         view = null;
-        history.replaceState(null, '', location.pathname);
+        forgetCode();
         setUi({ screen: 'home', error: errors[status], status: 'ok' });
       } else setUi({ status });
     },
@@ -375,7 +411,7 @@ function scanned(code) {
   history.replaceState(null, '', `?p=${code}`);
   const name = store.get('ctt-name');
   if (name) return join(code, name);
-  setUi({ screen: 'home', error: '', notice: T('scanned', code) });
+  setUi({ screen: 'home', error: '', notice: '' });
   $app.querySelector('input[name=name]')?.focus();
 }
 
@@ -419,7 +455,8 @@ function render() {
   let html;
   if (ui.screen === 'home') html = homeScreen();
   else if (ui.screen === 'scan') html = scanScreen();
-  else if (ui.screen === 'busy') html = `<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
+  else if (ui.screen === 'privacy') html = privacyScreen();
+  else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
   $app.innerHTML = banner + html;
@@ -434,8 +471,22 @@ function render() {
   tick();
 }
 
+// Petites icônes au trait (couleur du texte).
+const icon = d => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICONS = {
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+  chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  noUser: '<circle cx="10" cy="8" r="4"/><path d="M2 21a8 8 0 0 1 13-6.2M17 17l4 4M21 17l-4 4"/>',
+  back: '<path d="M15 18l-6-6 6-6"/>',
+};
+
+// Logo en haut des écrans : un toucher ramène à l'accueil (en partie, après confirmation).
+const homeLogo = () => `<button class="home-logo" data-act="home" aria-label="${T('home')}">Who is <span>bro</span>&nbsp;?</button>`;
+
 function homeScreen() {
-  const code = params.get('p') || '';
+  if (joinCode()) return joinScreen();
   return `
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
@@ -453,18 +504,10 @@ function homeScreen() {
         <p class="url">${esc(lanUrl)}</p>
       </div>
     </section>` : ''}
-    <section class="card">
-      <h2>${T('joinTitle')}</h2>
-      <form class="join" data-form="join">
-        <input name="code" value="${esc(code)}" maxlength="${CODE_LENGTH}" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="${T('codeLabel')}">
-        <input name="name" value="${esc(store.get('ctt-name') || '')}" maxlength="24" placeholder="${T('yourName')}" autocomplete="given-name" aria-label="${T('yourName')}">
-        <button class="primary" type="submit">${T('join')}</button>
-      </form>
-      <button class="scan-btn" data-act="scan">${T('scanQr')}</button>
-    </section>
-    <section class="card">
-      <h2>${T('createTitle')}</h2>
-      <label class="button primary file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
+    <section class="host">
+      <label class="button primary big file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
+      <p class="hint">${T('importHint')}</p>
+      <button class="privacy-badge" data-act="privacy">${icon(ICONS.lock)}<span>${T('privacyBadge')}<u>${T('privacyHow')}</u></span></button>
       <details>
         <summary>${T('howExport')}</summary>
         <p>${T('exportIphone')}</p>
@@ -472,15 +515,47 @@ function homeScreen() {
         <p>${T('exportMedia')}</p>
         <p>${T('exportNoMedia')}</p>
       </details>
-      <p>${T('importText')}</p>
-      <a class="privacy" href="${T('privacyPage')}">${T('privacyLink')}</a>
       <button class="link" data-act="demo">${T('demo')}</button>
+    </section>
+    <section class="friend">
+      <h2>${T('joinFriend')}</h2>
+      <p>${T('joinFriendHint')}</p>
+      <button data-act="scan">${T('scanHere')}</button>
     </section>
     <footer class="foot">
       <a href="${T('videoFile')}">${T('video')}</a>
       <a href="${T('aboutPage')}">${T('about')}</a>
       <button class="link" data-act="lang" lang="${lang === 'fr' ? 'en' : 'fr'}">${T('otherLang')}</button>
     </footer>`;
+}
+
+// Arrivé par le QR code de l'hôte : il ne reste qu'à donner son prénom.
+function joinScreen() {
+  return `
+    ${homeLogo()}
+    ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
+    <section class="card">
+      <h2>${T('joinTitle')}</h2>
+      <form class="join" data-form="join">
+        <input name="name" value="${esc(store.get('ctt-name') || '')}" maxlength="24" placeholder="${T('yourName')}" autocomplete="given-name" aria-label="${T('yourName')}">
+        <button class="primary" type="submit">${T('join')}</button>
+      </form>
+    </section>
+    <button class="privacy-badge" data-act="privacy">${icon(ICONS.lock)}<span>${T('privacyBadge')}<u>${T('privacyHow')}</u></span></button>
+    <button class="link" data-act="cancel-join">${T('cancel')}</button>`;
+}
+
+// « Comment ? » : l'essentiel sur les données en quatre points, le détail sur la page dédiée.
+function privacyScreen() {
+  const icons = [ICONS.phone, ICONS.chat, ICONS.trash, ICONS.noUser];
+  return `
+    <div class="sheet-top"><button class="back" data-act="privacy-close" aria-label="${T('cancel')}">${icon(ICONS.back)}</button><h1>${T('privacyTitle')}</h1></div>
+    <ul class="privacy-points">${T('privacyPoints').map(([title, text], i) => `
+      <li>${icon(icons[i])}<div><b>${title}</b><p>${text}</p></div></li>`).join('')}</ul>
+    <div class="actions">
+      <button class="primary big" data-act="privacy-close">${T('gotIt')}</button>
+      <a class="privacy-more" href="${T('privacyPage')}">${T('privacyMore')}</a>
+    </div>`;
 }
 
 function playerList(v) {
@@ -501,17 +576,14 @@ function lobbyScreen() {
   const v = view;
   const me = v.players.find(p => p.id === v.me);
   const taken = new Map(v.players.filter(p => p.author).map(p => [p.author, p]));
-  const canShare = navigator.share || navigator.clipboard;   // absents en http sur le réseau local
   return `
+    ${homeLogo()}
     <div class="top"><span class="title">${T('quote', esc(v.title))}</span></div>
-    <section class="card invite">
-      ${v.host ? `<div class="qr">${qrSvg(inviteUrl(v.code))}</div>` : ''}
-      <div>
-        <p class="label">${T('codeLabel')}</p>
-        <p class="code">${esc(v.code)}</p>
-        ${v.host ? (canShare ? `<button class="small" data-act="share">${T('shareLink')}</button>` : `<p class="url">${esc(inviteUrl(v.code))}</p>`) : ''}
-      </div>
-    </section>
+    ${v.host ? `
+    <section class="card join-qr">
+      <div class="qr" data-code="${esc(v.code)}">${qrSvg(inviteUrl(v.code))}</div>
+      <p>${T('scanToJoin')}</p>
+    </section>` : ''}
 
     ${v.waiting?.length ? `
     <section class="card knock">
@@ -822,6 +894,7 @@ function endScreen() {
   const ranking = [...v.players].filter(p => p.author).sort((a, b) => b.score - a.score);
   const rank = p => 1 + ranking.filter(q => q.score > p.score).length;   // ex æquo : même rang
   return `
+    ${homeLogo()}
     ${v.slides?.length ? `<h2>${T('moments')}</h2><section class="slideshow" data-slides></section>` : ''}
     <header class="brand small"><h1>${T('ranking')}</h1></header>
     <ol class="ranking">${ranking.map(p => `
@@ -830,7 +903,10 @@ function endScreen() {
     <h2>${T('portraits')}</h2>
     <div class="portraits">${v.portraits.map(x => `
       <div class="portrait"><b>${esc(x.name)}</b><p>${x.tics.map(t => `<span>${esc(t)}</span>`).join('')}</p></div>`).join('')}</div>
-    ${v.host ? `<div class="actions"><button class="primary big" data-act="replay">${T('replay')}</button></div>` : `<p class="wait">${T('hostCanReplay')}</p>`}`;
+    <div class="actions">
+      ${v.host ? `<button class="primary big" data-act="replay">${T('replay')}</button>` : `<p class="wait">${T('hostCanReplay')}</p>`}
+      <button class="big" data-act="home">${T('backHome')}</button>
+    </div>`;
 }
 
 // Diaporama de fin : une photo toutes les 4 secondes, avec les emojis envoyés juste après.
@@ -893,6 +969,14 @@ $app.addEventListener('click', async e => {
     host(() => fetch('samples/' + encodeURIComponent(name)).then(r => r.blob()).then(b => new File([b], name, { type: 'application/zip' })));
   }
   else if (act === 'scan') startScan();
+  else if (act === 'privacy') { setUi({ screen: 'privacy' }); scrollTo(0, 0); }
+  else if (act === 'privacy-close') { setUi({ screen: 'home' }); scrollTo(0, 0); }
+  else if (act === 'cancel-join') { forgetCode(); setUi({ screen: 'home', error: '', notice: '' }); }
+  else if (act === 'home') {
+    if (!game && !client && ui.screen !== 'game') return setUi({ screen: 'home', error: '', notice: '' });
+    if (ui.screen === 'game' && view?.phase !== 'end' && !confirm(game ? T('quitHost') : T('quitGuest'))) return;
+    leaveGame();
+  }
   else if (act === 'scan-cancel') { stopScan(); setUi({ screen: 'home' }); }
   else if (act === 'lang') { setLang(lang === 'fr' ? 'en' : 'fr'); saveLang(lang); render(); }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
@@ -911,13 +995,7 @@ $app.addEventListener('click', async e => {
       else { await navigator.clipboard.writeText(`${text} ${url}`); el.textContent = T('linkCopied'); }
     } catch { /* partage annulé */ }
   }
-  else if (act === 'share') {
-    const url = inviteUrl(view.code);
-    try {
-      if (navigator.share) await navigator.share({ title: 'Who is bro ?', text: T('shareText', view.code), url });
-      else { await navigator.clipboard.writeText(url); el.textContent = T('linkCopied'); }
-    } catch { /* partage annulé */ }
-  }
+
 });
 
 $app.addEventListener('change', e => {
@@ -931,12 +1009,9 @@ $app.addEventListener('change', e => {
 
 $app.addEventListener('submit', e => {
   e.preventDefault();
-  if (e.target.dataset.form === 'join') { const f = new FormData(e.target); join(f.get('code') || '', f.get('name') || ''); }
+  if (e.target.dataset.form === 'join') join(joinCode(), new FormData(e.target).get('name') || '');
 });
 
-$app.addEventListener('input', e => {
-  if (e.target.name === 'code') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-});
 
 // Lien d'invitation : on rejoint tout de suite si on connaît déjà le prénom, sinon on le demande.
 pruneSaves(myId, 5 * 60 * 1000);   // parties abandonnées (onglet fermé depuis plus de 5 minutes)

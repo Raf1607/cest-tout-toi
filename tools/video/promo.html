@@ -83,9 +83,8 @@
   <!-- 4. Les potes rejoignent -->
   <div class="scene" id="s4">
     <div class="phone" style="gap:30px">
-      <div style="font-size:30px; color:var(--muted); text-align:center; margin-top:30px" id="s4l"></div>
-      <div class="disp" style="font-size:96px; color:var(--accent); text-align:center; letter-spacing:.06em">GZTAPU</div>
-      <div style="align-self:center; width:340px; height:340px; background:#fff; border-radius:26px; padding:20px"><canvas id="s4qr" width="300" height="300" style="width:300px; height:300px"></canvas></div>
+      <div style="font-size:34px; color:var(--muted); text-align:center; margin-top:30px" id="s4l"></div>
+      <div style="align-self:center; width:460px; height:460px; background:#fff; border-radius:30px; padding:20px"><canvas id="s4qr" width="420" height="420" style="width:420px; height:420px"></canvas></div>
       <div style="font:800 40px var(--display)" id="s4pl"></div>
       <div id="s4list" style="display:flex; flex-direction:column; gap:16px; font-size:36px"></div>
     </div>
@@ -162,7 +161,7 @@ const TX = {
     words: ['Ton', 'groupe', 'WhatsApp', 'a', 'des', 'secrets.'], tagWord: 2, breaks: [1, 2],
     host: 'Créer une partie', import: 'Importer la discussion', analysing: 'Analyse de 12 480 messages…', analysed: 'Analyse terminée',
     found: ['✅ 6 membres', '🗣️ 48 expressions cultes', '🏆 14 records', '🖼️ 320 stickers et photos'],
-    code: 'Code de la partie', playersTitle: 'Joueurs', you: 'Toi (hôte)', players: ['Julie', 'Tom', 'Inès'], options: ['Julie', 'Tom', 'Inès', 'Max'],
+    code: 'Scanne pour rejoindre', playersTitle: 'Joueurs', you: 'Toi (hôte)', players: ['Julie', 'Tom', 'Inès'], options: ['Julie', 'Tom', 'Inès', 'Max'],
     quote: '«&nbsp;j\'arrive dans 5&nbsp;min, promis&nbsp;»', ask: 'Qui a dit ça ?', round: 'Manche 3 / 10',
     pre: 'C\'était…', winner: 'Tom !', rows: ['Inès', 'Julie', 'Tom'],
     live: 'Encore plus fun<br><span class="tag">en live</span>',
@@ -184,7 +183,7 @@ const TX = {
     words: ['Your', 'WhatsApp', 'group', 'has', 'secrets.'], tagWord: 1, breaks: [0, 1],
     host: 'Host a game', import: 'Import the chat', analysing: 'Analyzing 12,480 messages…', analysed: 'Analysis done',
     found: ['✅ 6 members', '🗣️ 48 iconic phrases', '🏆 14 records', '🖼️ 320 stickers and photos'],
-    code: 'Game code', playersTitle: 'Players', you: 'You (host)', players: ['Emma', 'Tom', 'Priya'], options: ['Emma', 'Tom', 'Priya', 'Max'],
+    code: 'Scan to join', playersTitle: 'Players', you: 'You (host)', players: ['Emma', 'Tom', 'Priya'], options: ['Emma', 'Tom', 'Priya', 'Max'],
     quote: '“be there in 5&nbsp;min, promise”', ask: 'Who said that?', round: 'Round 3 / 10',
     pre: 'It was…', winner: 'Tom!', rows: ['Priya', 'Emma', 'Tom'],
     live: 'Even more fun<br><span class="tag">in person</span>',
@@ -229,7 +228,7 @@ const PLAYERS = TX.players;
 $('s4list').innerHTML = [TX.you, ...PLAYERS].map((n, i) => `<div id="s4p${i}" class="card" style="padding:18px 26px; display:flex; justify-content:space-between"><span>${n}</span><span style="color:var(--good)">✓</span></div>`).join('');
 // Faux QR code : un damier fixe, il ne mène nulle part.
 {
-  const c = $('s4qr').getContext('2d'), n = 25, s = 300 / n;
+  const c = $('s4qr').getContext('2d'), n = 25, s = 420 / n;
   seed = 7; c.fillStyle = '#000';
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (rnd() > .5) c.fillRect(x * s, y * s, s, s);
   for (const [x, y] of [[0, 0], [18, 0], [0, 18]]) {
