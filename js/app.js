@@ -564,7 +564,7 @@ function memberPicker(v, taken) {
       const busy = owner && !mine && owner.connected;
       return `<button data-act="claim" data-author="${esc(m.name)}" class="${mine ? 'on' : ''} ${many && !m.tics ? 'minor' : ''}" ${busy ? 'disabled' : ''}>
         <span>${esc(m.name)}</span>
-        <small>${busy ? T('taken') : `${T('messagesCount', fmt(m.messages))}${m.tics ? '' : T('nothingToGuess')}`}</small>
+        <small>${busy ? T('taken') : T('messagesCount', fmt(m.messages))}</small>
       </button>`;
     }).join('')}</div>
     ${many && minor ? `<button class="link more-members" data-act="more-members" data-n="${minor}"></button>` : ''}`;
