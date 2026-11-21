@@ -565,6 +565,7 @@ function lobbyScreen() {
     <section class="card join-qr">
       <div class="qr" data-code="${esc(v.code)}">${qrSvg(inviteUrl(v.code))}</div>
       <p>${T('scanToJoin')}</p>
+      <p class="remote">${T('remoteFriends')} <button class="link" data-act="share">${T('sendLink')}</button></p>
     </section>` : ''}
 
     ${v.waiting?.length ? `
@@ -968,6 +969,14 @@ $app.addEventListener('click', async e => {
   else if (act === 'start' || act === 'next' || act === 'replay' || act === 'skip') {
     send({ t: act });
     if (act === 'start' && game?.phase === 'question') countGame();
+  }
+  else if (act === 'share') {
+    // Invitation à distance : le partage du téléphone (WhatsApp, SMS…) avec un message tout prêt.
+    const text = T('inviteText'), url = inviteUrl(view.code);
+    try {
+      if (navigator.share) await navigator.share({ title: 'Who is bro ?', text, url });
+      else { await navigator.clipboard.writeText(`${text} ${url}`); el.textContent = T('linkCopied'); }
+    } catch { /* partage annulé */ }
   }
   else if (act === 'share-game') {
     // Message neutre : ni prénom ni score, seulement le lien du jeu.
