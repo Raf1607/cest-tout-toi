@@ -50,14 +50,70 @@ const post = (conn, msg) => { try { if (conn.open) conn.send(msg); } catch { /* 
 const inviteUrl = code => `${location.origin + location.pathname}?p=${code}`;
 
 // Compteur de parties, tous joueurs confondus : un service public gratuit (Abacus) garde le total,
-// faute de serveur à nous. Il ne reçoit qu'un « +1 », rien sur la partie. S'il est en panne, on n'affiche rien.
+// faute de serveur à nous. Il ne reçoit qu'un « +1 », rien sur la partie.
+// Le compteur est là tout de suite : ses chiffres défilent comme un panneau de gare (une seconde au moins,
+// plus si le service tarde), puis se posent un à un sur le total. Si le service ne répond pas,
+// on se pose sur le dernier total vu sur ce téléphone ; sans lui, le compteur s'efface.
 const COUNTER = 'https://abacus.jasoncameron.dev';
 const COUNTER_KEY = 'who-is-bro-raf1607/parties';
-let gamesPlayed = null;
-fetch(`${COUNTER}/get/${COUNTER_KEY}`).then(r => (r.ok ? r.json() : null)).then(d => {
-  gamesPlayed = d?.value ?? null;
-  if (gamesPlayed && ui.screen === 'home') render();
-}).catch(() => { /* compteur indisponible */ });
+const SPIN_MIN = 1000, SPIN_STEP = 70, SETTLE_STEP = 140, COUNTER_TIMEOUT = 6000;
+const lastGames = (() => { try { return Number(localStorage.getItem('ctt-games')) || null; } catch { return null; } })();
+const games = { value: null, start: performance.now(), settleAt: 0, done: false, gone: false, raf: 0 };
+(() => {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), COUNTER_TIMEOUT);
+  fetch(`${COUNTER}/get/${COUNTER_KEY}`, { signal: abort.signal }).then(r => (r.ok ? r.json() : null)).then(d => {
+    if (!d?.value) throw new Error();
+    games.value = d.value;
+    try { localStorage.setItem('ctt-games', d.value); } catch { /* navigation privée */ }
+  }).catch(() => {
+    games.value = lastGames;
+    if (!games.value) { games.gone = true; document.querySelector('.counter')?.remove(); }
+  }).finally(() => clearTimeout(timer));
+})();
+
+const gamesText = n => n.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US');
+// Les cases du panneau : une par chiffre, les espaces et virgules de milliers entre elles.
+const flaps = text => [...text].map(c => (/\d/.test(c) ? `<span class="flap">${c}</span>` : `<span class="sep">${c}</span>`)).join('');
+function counterHtml() {
+  if (games.gone) return '';
+  const settled = games.done;
+  const text = settled ? gamesText(games.value) : (games.settleAt ? gamesText(games.value) : gamesText(lastGames || 1234));
+  if (!settled) startFlaps();
+  return `<p class="counter">${icon(ICONS.globe)}<b class="flaps">${flaps(text)}</b> <span class="counter-label">${T('gamesPlayed', settled ? games.value : 2)}</span></p>`;
+}
+function startFlaps() {
+  if (games.raf) return;
+  let last = 0;
+  const tick = now => {
+    games.raf = 0;
+    const box = document.querySelector('.counter .flaps');
+    if (!box) return;                              // plus à l'écran : on reprendra au prochain affichage
+    if (!games.settleAt && games.value && now - games.start >= SPIN_MIN) {
+      games.settleAt = now;
+      box.innerHTML = flaps(gamesText(games.value));   // la bonne longueur, puis les chiffres se posent
+    }
+    const final = games.settleAt ? gamesText(games.value).replace(/\D/g, '') : '';
+    if (now - last >= SPIN_STEP) {
+      last = now;
+      [...box.querySelectorAll('.flap')].forEach((flap, i) => {
+        const stopped = games.settleAt && now >= games.settleAt + i * SETTLE_STEP;
+        const digit = stopped ? final[i] : String(Math.floor(Math.random() * 10));
+        if (flap.textContent !== digit) { flap.textContent = digit; flap.classList.remove('flip'); void flap.offsetWidth; flap.classList.add('flip'); }
+      });
+    }
+    const flapCount = box.querySelectorAll('.flap').length;
+    if (games.settleAt && now >= games.settleAt + (flapCount - 1) * SETTLE_STEP) {
+      games.done = true;
+      box.innerHTML = flaps(gamesText(games.value));
+      const label = document.querySelector('.counter-label');
+      if (label) label.innerHTML = T('gamesPlayed', games.value);
+      return;
+    }
+    games.raf = requestAnimationFrame(tick);
+  };
+  games.raf = requestAnimationFrame(tick);
+}
 const countGame = () => {
   if (['localhost', '127.0.0.1'].includes(location.hostname)) return;
   fetch(`${COUNTER}/hit/${COUNTER_KEY}`).catch(() => { /* compteur indisponible */ });
@@ -501,7 +557,7 @@ function homeScreen() {
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
       <p>${T('tagline')}</p>
-      ${gamesPlayed ? `<p class="counter">${icon(ICONS.globe)}${T('gamesPlayed', gamesPlayed)}</p>` : ''}
+      ${counterHtml()}
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
     ${ui.notice ? `<p class="notice">${esc(ui.notice)}</p>` : ''}

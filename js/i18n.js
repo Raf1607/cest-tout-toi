@@ -20,7 +20,7 @@ const FR = {
   // Accueil
   title: 'Who is bro ? · Le quiz de ton groupe WhatsApp',
   tagline: '<b>Qui a dit ça&nbsp;? Qui parle le plus&nbsp;? Qui a posté cette photo&nbsp;?</b><br>Lance un quiz entre potes sur ton groupe WhatsApp.',
-  gamesPlayed: n => `<b>${n.toLocaleString('fr-FR')}</b> ${plural(n, 'partie jouée', 'parties jouées')} dans le monde`,
+  gamesPlayed: n => `${plural(n, 'partie jouée', 'parties jouées')} dans le monde`,
   joinTitle: 'Rejoindre la partie',
   joinFriend: 'Un ami a lancé la partie&nbsp;?',
   scanHere: '📷 Scanner',
@@ -227,7 +227,7 @@ const EN = {
   locale: 'en-US',
   title: 'Who is bro ? · The quiz about your WhatsApp group',
   tagline: '<b>Who said that? Who talks the most? Who posted this photo?</b><br>Start a quiz with your friends about your WhatsApp group chat.',
-  gamesPlayed: n => `<b>${n.toLocaleString('en-US')}</b> ${plural(n, 'game played', 'games played')} worldwide`,
+  gamesPlayed: n => `${plural(n, 'game played', 'games played')} worldwide`,
   joinTitle: 'Join the game',
   joinFriend: 'A friend started a game?',
   scanHere: '📷 Scan',
