@@ -443,7 +443,7 @@ const ICONS = {
 };
 
 // Réassurance sur les données, sur l'accueil et à l'arrivée d'un invité : mène à l'explication.
-const privacyBadge = () => `<button class="privacy-badge" data-act="privacy">${icon(ICONS.lock)}<span><b>${T('noData')}</b><small>${T('noDataSub')} <u>${T('privacyHow')}</u></small></span></button>`;
+const privacyBadge = () => `<button class="privacy-badge" data-act="privacy">${icon(ICONS.lock)}<span><b>${T('noData')}</b><small>${T('noDataSub')} <u>${T('privacyHow')}</u></small></span>${icon(ICONS.lock)}</button>`;
 
 // Logos officiels d'Apple et d'Android (tracés Simple Icons), pleins.
 const OS_LOGOS = {
