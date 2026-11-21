@@ -1,0 +1,9 @@
+# Worker de paiement de Who is bro ? : crée les paiements de soutien (1 € ou 2 €) chez Stripe.
+# La clé secrète n'est jamais ici : wrangler secret put STRIPE_SECRET_KEY
+name = "whoisbro-pay"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://whoisbro.lol,http://localhost:8790,http://localhost:8792"

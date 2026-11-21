@@ -41,7 +41,8 @@ const device = (label, name) => ({ label, engine: name === 'firefox' ? 'firefox'
   options: name === 'firefox' ? FIREFOX_ANDROID : devices[name] });
 
 const SCENARIOS = [
-  { name: 'fr-iphone-hote', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (avec médias).zip', reload: true,
+  // support : soutien de fin de partie activé avec un faux Stripe (chaque joueur : succès, échec, annulation).
+  { name: 'fr-iphone-hote', locale: 'fr-FR', zip: 'WhatsApp Chat - Les Potes (avec médias).zip', reload: true, support: ['success', 'fail', 'cancel'],
     players: [device('iPhone SE', 'iPhone SE'), device('Pixel 7', 'Pixel 7'), device('Firefox Android', 'firefox')] },
   { name: 'en-android-hote', locale: 'en-US', zip: 'WhatsApp Chat - The Crew (with media).zip', outsider: 2,
     players: [device('Galaxy S9+', 'Galaxy S9+'), device('iPhone 15 Pro Max', 'iPhone 15 Pro Max'), device('Galaxy Tab S9', 'Galaxy Tab S9')] },
@@ -53,11 +54,29 @@ const problems = [];
 const report = (who, msg) => { problems.push(`${who} : ${msg}`); console.log(`  ✗ ${new Date().toISOString().slice(17, 23)} ${who} : ${msg}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function open(browsers, d, locale, scenario) {
+// Configuration de test du soutien : fausse clé, faux Stripe.js (tools/soutien/fake-stripe.js), faux Worker.
+// Le site n'a aucune interface réservée aux tests : on remplace seulement son fichier de configuration.
+const SUPPORT_CONFIG = `export const STRIPE_PK = 'pk_test_fake';
+export const PAY_WORKER = '${BASE}__fake-pay';
+export const STRIPE_JS = '${BASE}tools/soutien/fake-stripe.js';
+export const SUPPORT_ENABLED = true;`;
+
+async function open(browsers, d, locale, scenario, mode) {
   browsers[d.engine] ||= await engines[d.engine].launch({ headless });
   const context = await browsers[d.engine].newContext({ ...d.options, locale });
-  const page = await context.newPage();
   const who = `${scenario} / ${d.label}`;
+  if (mode) {
+    await context.route('**/js/support.js*', r => r.fulfill({ contentType: 'text/javascript', body: SUPPORT_CONFIG }));
+    await context.route('**/__fake-pay/intent', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ clientSecret: 'pi_fake_secret' }) }));
+    await context.addInitScript(m => { try { localStorage.setItem('fake-stripe', m); } catch { /* */ } }, mode);
+    // Aucune requête vers le paiement en dehors de l'écran de soutien (accueil, salon, manches).
+    context.on('request', async req => {
+      if (!/fake-stripe|__fake-pay/.test(req.url())) return;
+      const screen = await req.frame()?.evaluate(() => document.querySelector('#app')?.dataset.screen).catch(() => null);
+      if (screen && screen !== 'patron') report(who, `requête vers le paiement sur l'écran « ${screen} »`);
+    });
+  }
+  const page = await context.newPage();
   page.on('pageerror', e => report(who, 'erreur JS : ' + e.message + (process.env.STACK ? ' @ ' + (e.stack || '').split('\n').slice(0, 4).join(' / ') : '')));
   page.on('console', m => { if (m.type() === 'error' && !/peerjs|Could not connect|ERR_|favicon|Failed to load resource|Wake Lock/i.test(m.text())) report(who, 'console : ' + m.text()); });
   return { page, context, who, label: d.label, seen: new Set() };
@@ -92,12 +111,44 @@ async function snap(p, tag, scenario) {
   await p.page.screenshot({ path: `${OUT}/${scenario}--${p.label.replace(/\W+/g, '-')}--${tag}.png` });
 }
 
+// Écran de soutien : on vérifie le rôle affiché, puis on paie selon le mode du faux Stripe de ce joueur
+// (succès : merci puis « Continuer » ; échec : message puis « Plus tard » ; annulation : « Plus tard »).
+async function supportStep(p, sc) {
+  const pg = p.page;
+  const emoji = await pg.evaluate(() => document.querySelector('.big-emoji')?.textContent || '');
+  if (!emoji) return;                                 // la roue tourne encore
+  if (p.supportDone) return;
+  p.supportDone = true;
+  const role = { '🫵': 'désigné', '🏆': 'champion', '😮‍💨': 'libre' }[emoji];
+  if (!role) return report(p.who, `rôle inconnu à l'écran de soutien (« ${emoji} »)`);
+  p.role = role;
+  await snap(p, `soutien-${role}`, sc.name);
+  const mode = await pg.evaluate(() => localStorage.getItem('fake-stripe'));
+  if (role === 'libre') await pg.click('[data-act="pay-anyway"]');
+  await pg.waitForSelector('.fake-wallet', { timeout: 15000 }).catch(() => report(p.who, 'pas de bouton de paiement'));
+  await pg.click('.fake-wallet').catch(() => {});
+  await sleep(1200);
+  if (mode === 'success') {
+    if (!await pg.locator('.badge-card').count()) report(p.who, 'pas d\'écran de merci après le paiement');
+    else await snap(p, 'soutien-merci', sc.name);
+    p.badge = await pg.evaluate(() => localStorage.getItem('ctt-badge'));
+    await pg.click('[data-act="patron-continue"]');
+  } else {
+    const error = await pg.locator('[data-pay-error]:not([hidden])').count();
+    if (mode === 'fail' && !error) report(p.who, 'pas de message après un paiement refusé');
+    if (mode === 'cancel' && error) report(p.who, 'message d\'erreur après une simple annulation');
+    await pg.click('[data-act="patron-later"]');
+  }
+  await pg.waitForFunction(() => document.querySelector('#app')?.dataset.screen === 'end', null, { timeout: 10000 })
+    .catch(() => report(p.who, 'pas d\'écran de fin après le soutien'));
+}
+
 async function play(sc) {
   console.log(`\n▶ ${sc.name} (${sc.players.map(d => d.label).join(', ')})`);
   const browsers = {};
   const ps = [];
   try {
-    for (const d of sc.players) ps.push(await open(browsers, d, sc.locale, sc.name));
+    for (const [i, d] of sc.players.entries()) ps.push(await open(browsers, d, sc.locale, sc.name, sc.support?.[i]));
     const [host, ...guests] = ps;
 
     // Accueil sur tous les appareils, puis l'hôte importe la discussion.
@@ -150,6 +201,8 @@ async function play(sc) {
           }
           if (p === host) lastRound = parseInt(n.match(/\d+/)?.[0] || lastRound, 10);
           if (p.seen.has('question') && await p.page.locator('.bubble img, .bubble video').count()) await snap(p, 'question-media', sc.name);
+        } else if (s === 'patron') {
+          await supportStep(p, sc);
         } else if (s && s !== 'lobby') await snap(p, s, sc.name);
       }
       if (screens[0] === 'reveal') {
@@ -178,8 +231,14 @@ async function play(sc) {
       if (await screenOf(p) === 'end') await snap(p, 'end', sc.name);
       const slides = await p.page.locator('[data-slides] img').count();
       const ranked = await p.page.locator('.ranking li').count();
-      console.log(`  ${p.label} : ${ranked} au classement, ${slides} photo(s) dans le diaporama, écrans vus : ${[...p.seen].join(' ')}`);
+      console.log(`  ${p.label} : ${ranked} au classement, ${slides} photo(s) dans le diaporama, écrans vus : ${[...p.seen].join(' ')}${p.role ? `, soutien : ${p.role}` : ''}`);
+      if (sc.support && !p.role) report(p.who, 'pas passé par l\'écran de soutien');
       if (ranked !== ps.length) report(p.who, `${ranked} joueurs au classement au lieu de ${ps.length}`);
+    }
+    if (sc.support) {
+      const payer = ps.find(p => p.badge);
+      if (!payer) report(sc.name, 'aucun badge enregistré après un paiement réussi');
+      else for (const p of ps) if (!await p.page.locator('.ranking .badge-icon').count()) report(p.who, 'le badge du payeur n\'apparaît pas au classement final');
     }
     const [host2, ...guests2] = ps;
     if (sc.quitFromLobby) {

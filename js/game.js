@@ -5,6 +5,7 @@ import { pickRecords } from './records.js';
 import { TUNING as T } from './tuning.js';
 import { score } from './scoring.js';
 import { DICT } from './i18n.js';
+import { SUPPORT_ENABLED } from './support.js';
 
 export const ROUNDS = [10, 15, 20];
 export const SECONDS = [15, 25, 40];
@@ -38,6 +39,18 @@ const randomInt = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;
 export const MAX_CHOICES = 6;
 const ACTIVE_SHARE = 0.02;
 const chance = p => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 < p;
+
+// Soutien en fin de partie : une roue (pipée) désigne un joueur invité à payer 1 €, le champion est
+// invité à payer 2 €, les autres jouent gratuitement. Jamais un champion, jamais un absent ; rien ne se
+// gagne en payant (la roue désigne seulement qui est invité à payer). Une seule fois par salon.
+export const PATRON_SPIN_MS = 4500;
+export const PATRON_MAX_MS = 60000;
+export const PATRON_MIN_PLAYERS = 2;
+export const AMOUNTS = { patron: 100, champion: 200, free: 100 };   // centimes
+const CHEER_EVERY = 5000;                                       // un encouragement par joueur toutes les 5 s
+const BADGE_RANK = { crown: 1, diamond: 2 };
+export const badgeOf = b => (BADGE_RANK[b] ? b : null);
+const bestBadge = (a, b) => ((BADGE_RANK[b] || 0) > (BADGE_RANK[a] || 0) ? b : a || null);
 
 export const MONTAGE_MS = 15000;   // montage de fin, avant le classement final
 const MONTAGE_MIN_ITEMS = 3;
@@ -258,6 +271,9 @@ export class Game {
     this.allowed = new Set();       // téléphones acceptés par l'hôte
     this.waiting = new Map();       // id → { id, name, at } : en attente de l'hôte
     this.refused = new Set();
+    this.support = SUPPORT_ENABLED;   // soutien en fin de partie (coupé sans clé Stripe)
+    this.patron = null;               // phase « patron » : roue du mécène et paiements
+    this.patronDone = false;          // déjà proposé dans ce salon : pas deux fois (« Rejouer » le même soir)
     this.join(hostId);
     this.onChange = onChange;
   }
@@ -268,11 +284,11 @@ export class Game {
   // n'importe qui ayant le code recevrait les noms et les messages du groupe). Un joueur déjà
   // accepté revient directement ; une fois la partie lancée, plus personne de nouveau n'entre.
   // Renvoie 'ok', 'wait', 'refused' ou 'closed'.
-  request(id, name) {
-    if (this.allowed.has(id)) { this.join(id); return 'ok'; }
+  request(id, name, badge = null) {
+    if (this.allowed.has(id)) { this.join(id, badge); return 'ok'; }
     if (this.refused.has(id)) return 'refused';
     if (this.phase !== 'lobby') return 'closed';
-    if (!this.waiting.has(id)) this.waiting.set(id, { id, name: String(name || '').trim().slice(0, 24), at: Date.now() });
+    if (!this.waiting.has(id)) this.waiting.set(id, { id, name: String(name || '').trim().slice(0, 24), at: Date.now(), badge: badgeOf(badge) });
     this.changed();
     return 'wait';
   }
@@ -284,14 +300,22 @@ export class Game {
     else { this.waiting.delete(id); this.refused.add(id); this.onAdmit?.(id, 'refused'); this.changed(); }
   }
 
-  join(id) {
+  // badge : 'crown' (mécène) ou 'diamond' (champion diamant), gardé sur le téléphone du joueur.
+  join(id, badge) {
     this.allowed.add(id);
     const name = this.waiting.get(id)?.name || '';
+    badge = badgeOf(badge) || this.waiting.get(id)?.badge || null;
     this.waiting.delete(id);
     const p = this.players.get(id);
-    if (p) p.connected = true;
-    else this.players.set(id, { id, author: null, name, outside: false, score: 0, connected: true, order: this.players.size });
+    if (p) { p.connected = true; p.badge = bestBadge(p.badge, badge); }
+    else this.players.set(id, { id, author: null, name, outside: false, score: 0, connected: true, order: this.players.size, badge });
     this.changed();
+  }
+
+  // Badge du téléphone de l'hôte (il ne passe pas par request).
+  setBadge(id, badge) {
+    const p = this.players.get(id);
+    if (p && badgeOf(badge)) { p.badge = bestBadge(p.badge, badge); this.changed(); }
   }
 
   leave(id) {
@@ -342,8 +366,25 @@ export class Game {
     } else if (msg.t === 'next' && host && this.phase === 'reveal') {
       return this.next();
     } else if (msg.t === 'skip' && host && this.phase === 'montage') {
+      return this.wrapUp();
+    } else if (msg.t === 'skip' && host && this.phase === 'patron') {
       return this.finish();
-    } else if (msg.t === 'replay' && host && this.phase === 'end') {
+    } else if (msg.t === 'paid' && this.patron && (this.phase === 'patron' || this.phase === 'end') && badgeOf(msg.badge)) {
+      // Une simple déclaration du téléphone : c'est cosmétique (un badge), on ne vérifie pas plus.
+      p.badge = bestBadge(p.badge, msg.badge);
+      if (!this.patron.paid.some(x => x.id === id)) this.patron.paid.push({ id, badge: msg.badge });
+      else this.patron.paid.find(x => x.id === id).badge = bestBadge(this.patron.paid.find(x => x.id === id).badge, msg.badge);
+    } else if (msg.t === 'cheer' && this.phase === 'patron' && this.patron.step === 'verdict' && this.patron.patronId && id !== this.patron.patronId) {
+      const now = Date.now();
+      if (now - (this.patron.cheered[id] || 0) < CHEER_EVERY) return;
+      this.patron.cheered[id] = now;
+      this.patron.cheer = { from: p.author || p.name || '', seq: (this.patron.cheer?.seq || 0) + 1 };
+    } else if (msg.t === 'patron-done' && this.phase === 'patron') {
+      if (!this.patron.done.includes(id)) this.patron.done.push(id);
+      const waiting = [...this.players.values()].filter(q => q.connected && (q.author || q.outside || q.id === this.hostId) && !this.patron.done.includes(q.id));
+      if (!waiting.length) return this.finish();
+    } else if (msg.t === 'replay' && host && (this.phase === 'end' || this.phase === 'patron')) {
+      clearTimeout(this.timer);
       this.phase = 'lobby';
     }
     this.changed();
@@ -478,9 +519,56 @@ export class Game {
     clearTimeout(this.timer);
     this.index++;
     if (this.index < this.deck.length) return this.ask();
-    if (this.montageItems().length < MONTAGE_MIN_ITEMS) return this.finish();
+    if (this.montageItems().length < MONTAGE_MIN_ITEMS) return this.wrapUp();
     this.phase = 'montage';
-    this.timer = setTimeout(() => this.finish(), MONTAGE_MS);
+    this.timer = setTimeout(() => this.wrapUp(), MONTAGE_MS);
+    this.changed();
+  }
+
+  // Après le montage (ou la dernière manche) : la roue du mécène si le soutien est actif, une seule fois
+  // par salon et à deux joueurs classés au moins ; sinon directement l'écran de fin.
+  wrapUp() {
+    const ranked = [...this.players.values()].filter(p => p.author || p.outside);
+    if (!this.support || this.patronDone || ranked.length < PATRON_MIN_PLAYERS) return this.finish();
+    return this.startPatron(ranked);
+  }
+
+  // Tirage pipé : jamais un champion (ex æquo : tous champions), jamais un joueur déconnecté. La roue porte
+  // tous les prénoms (champions compris, pour le suspense), frôle un champion et s'arrête sur le désigné.
+  startPatron(ranked) {
+    clearTimeout(this.timer);
+    ranked = ranked.slice().sort((a, b) => a.order - b.order);
+    const top = Math.max(...ranked.map(p => p.score));
+    const champions = ranked.filter(p => p.score === top).map(p => p.id);
+    const eligible = ranked.filter(p => p.score !== top && p.connected);
+    const patronId = eligible.length ? eligible[randomInt(eligible.length)].id : null;
+    const stopIndex = patronId ? ranked.findIndex(p => p.id === patronId) : null;
+    let angle = null;
+    if (patronId) {
+      // Angle final, tiré par l'hôte pour que tous les téléphones voient la même chose. La roue tourne
+      // dans le sens des aiguilles d'une montre : juste avant de s'arrêter, le pointeur passe sur la case
+      // suivante ; si c'est un champion, on s'arrête tout près de la frontière (il l'a frôlé).
+      const slice = 360 / ranked.length;
+      const next = ranked[(stopIndex + 1) % ranked.length];
+      const jitter = champions.includes(next.id) && ranked.length > 1 ? -0.38 * slice : (randomInt(1000) / 1000 - 0.5) * 0.6 * slice;
+      angle = 360 * 6 - (stopIndex + 0.5) * slice + jitter;
+    }
+    this.patron = {
+      step: patronId ? 'spin' : 'verdict', ids: ranked.map(p => p.id), names: ranked.map(p => p.author || p.name || ''),
+      stopIndex, angle, patronId, champions, paid: [], done: [], cheer: null, cheered: {},
+    };
+    this.patronDone = true;
+    this.phase = 'patron';
+    if (patronId) this.timer = setTimeout(() => this.verdict(), PATRON_SPIN_MS);
+    else this.timer = setTimeout(() => this.finish(), PATRON_MAX_MS);
+    this.changed();
+  }
+
+  verdict() {
+    if (this.phase !== 'patron') return;
+    this.patron.step = 'verdict';
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.finish(), PATRON_MAX_MS);
     this.changed();
   }
 
@@ -535,9 +623,9 @@ export class Game {
   // Instantané de la partie (données simples), gardé sur le téléphone de l'hôte pour reprendre après
   // un rechargement de la page.
   snapshot() {
-    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare } = this;
+    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone } = this;
     return {
-      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare,
+      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone,
       used: [...this.used], shields: [...this.shields], allowed: [...this.allowed], refused: [...this.refused],
       players: [...this.players.values()],
     };
@@ -547,7 +635,8 @@ export class Game {
   // acceptés, ils rentrent directement), et les minuteurs repartent en leur laissant le temps.
   static restore(analysis, snap) {
     const g = new Game(analysis, snap.code, snap.hostId, null);
-    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking', 'spare']) g[k] = snap[k];
+    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking', 'spare', 'patron']) g[k] = snap[k];
+    g.patronDone = !!snap.patronDone;
     if (g.round) g.round.card = g.deck[g.index] || g.round.card;
     g.used = new Set(snap.used);
     g.shields = new Set(snap.shields);
@@ -559,7 +648,9 @@ export class Game {
       g.round.endsAt = Math.max(g.round.endsAt, Date.now() + RESUME_GRACE);
       g.timer = setTimeout(() => g.reveal(), g.round.endsAt - Date.now() + 300);
     } else if (g.phase === 'ranking' || g.phase === 'wheel') g.timer = setTimeout(() => g.advance(), 2000);
-    else if (g.phase === 'montage') g.timer = setTimeout(() => g.finish(), MONTAGE_MS);
+    else if (g.phase === 'montage') g.timer = setTimeout(() => g.wrapUp(), MONTAGE_MS);
+    else if (g.phase === 'patron' && g.patron?.step === 'spin') g.timer = setTimeout(() => g.verdict(), 2000);
+    else if (g.phase === 'patron') g.timer = setTimeout(() => g.finish(), PATRON_MAX_MS);
     return g;
   }
 
@@ -572,7 +663,7 @@ export class Game {
   // Ce que voit le joueur `id`.
   view(id) {
     const players = [...this.players.values()].sort((a, b) => a.order - b.order).map(p => ({
-      id: p.id, author: p.author, name: p.name, outside: !!p.outside, score: p.score, connected: p.connected, host: p.id === this.hostId,
+      id: p.id, author: p.author, name: p.name, outside: !!p.outside, score: p.score, connected: p.connected, host: p.id === this.hostId, badge: p.badge || null,
       voted: this.phase === 'question' && !!this.round.votes[p.id],
     }));
     const v = { phase: this.phase, lang: this.lang, code: this.code, title: this.analysis.title, withMedia: !!this.analysis.withMedia, me: id, host: id === this.hostId, players, settings: this.settings };
@@ -609,7 +700,7 @@ export class Game {
         n: this.round.n, total: this.deck.length,
         rows: after.map(pid => {
           const p = this.players.get(pid);
-          return { id: pid, name: p.author || p.name || '', shield: this.shields.has(pid), score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
+          return { id: pid, name: p.author || p.name || '', badge: p.badge || null, shield: this.shields.has(pid), score: p.score, delta: deltas[pid] || 0, was: Math.max(0, before.indexOf(pid)) };
         }),
       };
     }
@@ -623,7 +714,19 @@ export class Game {
       const p = this.players.get(this.wheel.target);
       v.wheel = { index: this.wheel.index, shielded: this.wheel.shielded, target: p?.author || p?.name || '', mine: this.wheel.target === id, names: this.wheel.names };
     }
-    if (this.phase === 'end') {
+    if (this.phase === 'patron') {
+      const P = this.patron, nameOf = pid => { const q = this.players.get(pid); return q?.author || q?.name || ''; };
+      const role = P.champions.includes(id) ? 'champion' : id === P.patronId ? 'patron' : 'free';
+      v.patron = {
+        step: P.step, names: P.names, stopIndex: P.stopIndex, angle: P.angle,
+        patron: P.patronId ? nameOf(P.patronId) : null, champions: P.champions.map(nameOf),
+        role, amount: AMOUNTS[role],
+        paid: P.paid.map(x => ({ name: nameOf(x.id), badge: x.badge, role: P.champions.includes(x.id) ? 'champion' : x.id === P.patronId ? 'patron' : 'free' })),
+        cheer: id === P.patronId ? P.cheer : null,
+      };
+    }
+    // L'écran de fin se prépare dès la roue du mécène : chacun y passe quand il veut.
+    if (this.phase === 'end' || this.phase === 'patron') {
       v.slides = this.slides();
       const L = DICT[this.lang];
       v.portraits = this.options.map(name => ({

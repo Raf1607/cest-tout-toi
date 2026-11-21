@@ -457,4 +457,77 @@ assert.equal(media.phase, 'end');
   }
 }
 
+// Soutien en fin de partie : roue du mécène pipée, rôles, paiements déclarés, une seule fois par salon.
+{
+  const finishWith = (scores, { disconnect = [], support = true } = {}) => {
+    const g = new Game(analysis, 'MECE', 'h', () => {});
+    g.support = support;
+    const ids = Object.keys(scores);
+    ids.filter(id => id !== 'h').forEach(id => g.join(id));
+    const names = ['Julie Moreau', 'Karim B', 'Inès', 'Thomas Lefèvre', 'Max'];
+    ids.forEach((id, i) => { g.players.get(id).author = names[i]; g.players.get(id).score = scores[id]; });
+    disconnect.forEach(id => { g.players.get(id).connected = false; });
+    g.phase = 'ranking'; g.deck = [{}]; g.index = 0;
+    g.advance();
+    clearTimeout(g.timer);
+    return g;
+  };
+  for (let i = 0; i < 500; i++) {
+    const g = finishWith({ h: 10, b: 6, c: 4, d: 10, e: 2 }, { disconnect: ['e'] });
+    assert.equal(g.phase, 'patron');
+    assert.ok(['b', 'c'].includes(g.patron.patronId), 'jamais un champion, jamais un déconnecté');
+    assert.deepEqual(g.patron.champions.sort(), ['d', 'h'], 'ex æquo : tous champions');
+    assert.equal(g.patron.names[g.patron.stopIndex], g.players.get(g.patron.patronId).author, 'la roue s\'arrête sur le désigné');
+  }
+  for (let i = 0; i < 100; i++) {
+    const g = finishWith({ h: 8, b: 3 });
+    assert.equal(g.patron.patronId, 'b', 'à deux, la roue tombe toujours sur le non-champion');
+    const slice = 360 / 2, under = ((-g.patron.angle % 360) + 360) % 360;
+    assert.ok(under >= slice && under < 2 * slice, 'l\'angle final pointe la case du désigné');
+  }
+  const tie = finishWith({ h: 5, b: 5 });
+  assert.equal(tie.patron.patronId, null, 'tout le monde ex æquo : pas de roue');
+  assert.equal(tie.patron.step, 'verdict');
+  assert.equal(tie.view('b').patron.role, 'champion');
+  assert.equal(finishWith({ h: 5, b: 3 }, { support: false }).phase, 'end', 'soutien coupé : directement l\'écran de fin');
+  const solo = new Game(analysis, 'SOLO', 'h', () => {}); solo.support = true; solo.players.get('h').author = 'Inès';
+  solo.phase = 'ranking'; solo.deck = [{}]; solo.index = 0; solo.advance(); clearTimeout(solo.timer);
+  assert.equal(solo.phase, 'end', 'moins de deux joueurs classés : pas de roue');
+
+  // Rôles, montants, encouragements, paiements, fin quand tout le monde a continué.
+  const g = finishWith({ h: 9, b: 4, c: 2 });
+  const pid = g.patron.patronId, free = ['b', 'c'].find(x => x !== pid);
+  g.verdict(); clearTimeout(g.timer);
+  assert.deepEqual([g.view('h').patron.role, g.view(pid).patron.role, g.view(free).patron.role], ['champion', 'patron', 'free']);
+  assert.deepEqual([g.view('h').patron.amount, g.view(pid).patron.amount, g.view(free).patron.amount], [200, 100, 100]);
+  assert.ok(g.view(free).slides && g.view(free).portraits, 'l\'écran de fin est prêt pendant la roue');
+  g.handle(free, { t: 'cheer' }); g.handle(free, { t: 'cheer' });
+  assert.equal(g.view(pid).patron.cheer.seq, 1, 'un encouragement toutes les 5 secondes');
+  assert.equal(g.view(free).patron.cheer, null, 'seul le désigné reçoit les encouragements');
+  g.handle(pid, { t: 'paid', badge: 'crown' });
+  g.handle('h', { t: 'paid', badge: 'diamond' });
+  g.handle(free, { t: 'paid', badge: 'gold' });
+  assert.deepEqual(g.view(free).patron.paid.map(x => x.badge), ['crown', 'diamond'], 'paiements affichés, badge inconnu refusé');
+  assert.equal(g.view(free).players.find(p => p.id === 'h').badge, 'diamond');
+  const snap = g.snapshot();
+  const back = Game.restore(analysis, JSON.parse(JSON.stringify(snap)));
+  clearTimeout(back.timer);
+  assert.equal(back.phase, 'patron'); assert.equal(back.patron.patronId, pid); assert.ok(back.patronDone);
+  g.handle('h', { t: 'patron-done' }); g.handle(pid, { t: 'patron-done' });
+  assert.equal(g.phase, 'patron', 'on attend que tout le monde ait continué');
+  g.handle(free, { t: 'patron-done' });
+  assert.equal(g.phase, 'end');
+  g.handle(free, { t: 'paid', badge: 'crown' });
+  assert.equal(g.players.get(free).badge, 'crown', 'un paiement qui aboutit après la fin compte encore');
+  g.handle('h', { t: 'replay' });
+  g.phase = 'ranking'; g.deck = [{}]; g.index = 0; g.advance(); clearTimeout(g.timer);
+  assert.equal(g.phase, 'end', 'pas de deuxième roue du mécène dans le même salon');
+
+  // Badges apportés en arrivant (validés par l'hôte).
+  const bg = new Game(analysis, 'BADG', 'h', () => {});
+  bg.request('x', 'Zoé', 'diamond'); bg.admit('x', true);
+  bg.request('y', 'Hugo', '<script>'); bg.admit('y', true);
+  assert.deepEqual([bg.players.get('x').badge, bg.players.get('y').badge], ['diamond', null]);
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

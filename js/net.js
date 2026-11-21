@@ -52,8 +52,8 @@ export async function openRoom(onConnection, wanted = null) {
 // Invité : se connecte à la salle et s'y reconnecte tout seul après une coupure.
 // onStatus reçoit 'ok', 'lost' (reconnexion en cours), 'notfound' ou 'gone'.
 export class Client {
-  constructor(code, id, name, { onMessage, onStatus }) {
-    Object.assign(this, { code, id, name, onMessage, onStatus, conn: null, joined: false, failures: 0, timer: null });
+  constructor(code, id, name, { onMessage, onStatus, badge = null }) {
+    Object.assign(this, { code, id, name, badge, onMessage, onStatus, conn: null, joined: false, failures: 0, timer: null });
     this.peer = new Peer();
     keepRegistered(this.peer);
     this.peer.on('open', () => { if (!this.conn) this.connect(); });
@@ -76,7 +76,7 @@ export class Client {
       this.joined = true;
       this.failures = 0;
       this.onStatus('ok');
-      conn.send({ t: 'hello', id: this.id, name: this.name });
+      conn.send({ t: 'hello', id: this.id, name: this.name, badge: this.badge });
     });
     conn.on('data', msg => this.onMessage(msg));
     conn.on('close', () => { if (this.conn === conn) this.retry(); });

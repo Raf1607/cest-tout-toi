@@ -3,7 +3,7 @@
 /* global qrcode, NoSleep */
 import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
-import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_SPIN_MS, ROULETTE_MS, MONTAGE_MS } from './game.js';
+import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_SPIN_MS, ROULETTE_MS, MONTAGE_MS, PATRON_SPIN_MS, badgeOf } from './game.js';
 import { BPM, unlockAudio, playPhonk } from './phonk.js';
 import { openRoom, Client, CODE_LENGTH } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
@@ -19,6 +19,12 @@ const store = {
   set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* navigation privée */ } },
   remove(k) { try { sessionStorage.removeItem(k); } catch { /* navigation privée */ } },
 };
+// Badge de soutien (👑 mécène, 💎 champion diamant) : gardé sur ce téléphone seulement, et pour de bon
+// (localStorage). Le plus fort l'emporte.
+const myBadge = () => { try { return badgeOf(localStorage.getItem('ctt-badge')); } catch { return null; } };
+function saveBadge(b) {
+  try { if (b === 'diamond' || !myBadge()) localStorage.setItem('ctt-badge', b); } catch { /* navigation privée : badge pour cette partie seulement */ }
+}
 const myId = store.get('ctt-id') || (() => {
   const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   store.set('ctt-id', id);
@@ -132,7 +138,7 @@ const nameOf = p => p.author || p.name || (p.host ? T('hostName') : T('newPlayer
 const mediaCache = new Map();
 function mediaArrived(id) {
   if (view?.phase === 'montage') return;   // le montage pioche dans ce qui est arrivé
-  if (view?.phase === 'end') {
+  if (view?.phase === 'end' || view?.phase === 'patron') {
     if (!$app.querySelector('[data-slides] .slide')) mountSlides();   // première photo arrivée
     return;
   }
@@ -201,7 +207,7 @@ async function launch(analysis, entries, file, snap = null) {
     }
     async function shareRound() {
       if (game.phase !== 'lobby') shareMontage();
-      if (game.phase === 'end') {
+      if (game.phase === 'end' || game.phase === 'patron') {
         for (const slide of game.slides()) await share({ file: slide.id, kind: 'photo' });   // une à une, pour ne pas saturer
         return;
       }
@@ -212,8 +218,8 @@ async function launch(analysis, entries, file, snap = null) {
     // Médias déjà partagés, pour un joueur qui arrive ou revient en cours de partie.
     function catchUp(conn) {
       const current = game.round && shared.get(game.round.card.tic.file);
-      if (current && game.phase !== 'lobby' && game.phase !== 'end') sendChunks(conn, current);
-      if (game.phase === 'end') for (const slide of game.slides()) if (shared.get(slide.id)) sendChunks(conn, shared.get(slide.id));
+      if (current && game.phase !== 'lobby' && game.phase !== 'end' && game.phase !== 'patron') sendChunks(conn, current);
+      if (game.phase === 'end' || game.phase === 'patron') for (const slide of game.slides()) if (shared.get(slide.id)) sendChunks(conn, shared.get(slide.id));
       if (game.phase !== 'lobby') for (const m of game.montageItems()) if (shared.get(m.file)) sendChunks(conn, shared.get(m.file));
     }
     function turnAway(pid, why) {
@@ -231,7 +237,7 @@ async function launch(analysis, entries, file, snap = null) {
           const old = conns.get(pid);
           conns.set(pid, conn);
           if (old && old !== conn) old.close();
-          const answer = game.request(pid, typeof msg.name === 'string' ? msg.name : '');
+          const answer = game.request(pid, typeof msg.name === 'string' ? msg.name : '', msg.badge);
           if (answer === 'ok') catchUp(conn);
           else if (answer === 'wait') post(conn, { t: 'wait' });
           else turnAway(pid, answer);
@@ -261,6 +267,7 @@ async function launch(analysis, entries, file, snap = null) {
       persist();
     };
     game.onAdmit = turnAway;
+    if (myBadge()) game.setBadge(myId, myBadge());
     window.addEventListener('beforeunload', confirmUnload);
     endGame = () => { for (const conn of conns.values()) post(conn, { t: 'ended' }); };
     ui.screen = 'game';
@@ -336,6 +343,7 @@ function join(code, name = store.get('ctt-name') || '') {
   client?.close();
   const inbox = new MediaInbox((id, url) => { mediaCache.set(id, url); mediaArrived(id); });
   client = new Client(code, myId, name, {
+    badge: myBadge(),
     onMessage(msg) {
       if (msg?.t === 'state') { ui.screen = 'game'; show(msg.s); }
       else if (msg?.t === 'wait') setUi({ screen: 'busy', busy: T('waiting') });
@@ -379,6 +387,10 @@ function setUi(patch) { Object.assign(ui, patch); render(); }
 function show(v) {
   const before = view;
   view = v;
+  if (v.phase === 'patron') {
+    if (before?.phase !== 'patron' || !ui.patron) ui.patron = { dismissed: false, pay: 'idle', cheerSeen: v.patron.cheer?.seq || 0, showPay: false };
+    ui.patron.view = v.patron;
+  }
   if (v.lang && v.lang !== lang) setLang(v.lang);   // la partie se joue dans la langue de l'hôte
   const fresh = v.phase === 'question' && (before?.phase !== 'question' || before.round.n !== v.round.n);
   if (fresh && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(40);
@@ -390,14 +402,19 @@ function render() {
   // Pendant une manche, les votes arrivent en continu : on met à jour les boutons sans les
   // redessiner, pour qu'un toucher en cours ne soit pas perdu.
   const inGame = ui.screen === 'game';
-  const key = inGame && view.phase === 'question' ? `${view.round.n}/${ui.status}`
+  const patron = inGame && patronLocal();
+  const key = patron ? `patron/${ui.patron.view.step}/${ui.patron.pay === 'thanks' ? 'merci' : ui.patron.showPay ? 'payer' : 'verdict'}`
+    : inGame && view.phase === 'question' ? `${view.round.n}/${ui.status}`
     : inGame && view.phase === 'ranking' ? `classement${view.ranking.n}`
     : inGame && view.phase === 'wheel' ? `roue${view.wheel.index}`
     : inGame && view.phase === 'montage' ? 'montage' : '';
   if (key && $app.dataset.key === key) {
-    if (view.phase === 'question') { patchQuestion(); tick(); }   // le classement animé, lui, n'est pas interrompu
+    if (patron) patchPatron();          // le bouton de paiement, déjà monté, ne doit pas être redessiné
+    else if (view.phase === 'question') { patchQuestion(); tick(); }   // le classement animé, lui, n'est pas interrompu
     return;
   }
+  unmountPay?.();
+  unmountPay = null;
   boardTimers.forEach(t => (t?.stop ? t.stop() : clearTimeout(t)));
   boardTimers = [];
   let html;
@@ -405,7 +422,8 @@ function render() {
   else if (ui.screen === 'privacy') html = privacyScreen();
   else if (ui.screen === 'howto') html = howtoScreen();
   else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
-  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
+  else if (patron) html = patronScreen();
+  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen, patron: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
   // Un champ du salon en cours de saisie (recherche, prénom) garde le curseur quand l'écran se redessine.
   const typing = document.activeElement?.dataset?.input;
@@ -416,13 +434,14 @@ function render() {
     const field = typing && $app.querySelector(`[data-input="${typing}"]`);
     if (field) { field.focus(); try { field.setSelectionRange(caret, caret); } catch { /* champ sans curseur */ } }
   }
-  $app.dataset.screen = ui.screen === 'game' ? view.phase : ui.screen;
+  $app.dataset.screen = ui.screen === 'game' ? (patron ? 'patron' : view.phase === 'patron' ? 'end' : view.phase) : ui.screen;
   $app.dataset.key = key;
   if (inGame && view.phase === 'question') patchQuestion();
   if (ui.screen === 'game' && view.phase === 'ranking') animateBoard();
   if (ui.screen === 'game' && view.phase === 'wheel') spinWheel();
   if (ui.screen === 'game' && view.phase === 'montage') runMontage();
-  if (ui.screen === 'game' && view.phase === 'end') mountSlides();
+  if (patron) startPatron();
+  if (ui.screen === 'game' && !patron && (view.phase === 'end' || view.phase === 'patron')) mountSlides();
   else { clearInterval(slideTimer); slideTimer = null; }
   tick();
 }
@@ -537,7 +556,7 @@ function privacyScreen() {
 function playerList(v) {
   return `<ul class="players">${v.players.map(p => `
     <li class="${p.connected ? '' : 'off'}">
-      <span class="name">${esc(nameOf(p))}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span>
+      <span class="name">${esc(nameOf(p))}${badgeIcon(p.badge)}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span>
       ${p.outside ? `<small class="tag">${T('outsideTag')}</small>` : ''}
       ${p.host && (p.author || p.name) ? `<small class="tag">${T('hostTag')}</small>` : ''}
       ${p.connected ? '' : `<small class="tag">${T('offTag')}</small>`}
@@ -737,7 +756,7 @@ function rankingScreen() {
     <ol class="board" style="height:${rows.length * step}px">${rows.map((p, now) => `
       <li data-now="${now}" data-was="${p.was}" class="${p.id === view.me ? 'me' : ''} ${p.delta > 0 ? 'gain' : p.delta < 0 ? 'loss' : ''} ${p.was > now ? 'rise' : ''}" style="--i:${p.was};height:${step - 8}px;transform:translateY(${p.was * step}px)">
         <em>${p.was + 1}</em>
-        <span class="name">${esc(p.id === view.me ? `${nameOf(p)} ${T('you')}` : nameOf(p))}${p.shield ? `<i class="shield" role="img" aria-label="${T('wheel').bouclier}">${icon(ICONS.shield)}</i>` : ''}</span>
+        <span class="name">${esc(p.id === view.me ? `${nameOf(p)} ${T('you')}` : nameOf(p))}${badgeIcon(p.badge)}${p.shield ? `<i class="shield" role="img" aria-label="${T('wheel').bouclier}">${icon(ICONS.shield)}</i>` : ''}</span>
         ${p.delta ? `<i class="${p.delta > 0 ? 'up' : 'down'}">${p.delta > 0 ? '+' : '−'}${Math.abs(p.delta)}</i>` : ''}
         <u class="${p.was > now ? 'up' : p.was < now ? 'down' : ''}">${p.was > now ? '▲' : p.was < now ? '▼' : ''}</u>
         <b data-from="${p.score - p.delta}" data-to="${p.score}">${p.score - p.delta}</b>
@@ -943,7 +962,7 @@ function endScreen() {
     ${v.slides?.length ? `<h2>${T('moments')}</h2><section class="slideshow" data-slides></section>` : ''}
     <header class="brand small"><h1>${T('ranking')}</h1></header>
     <ol class="ranking">${ranking.map(p => `
-      <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(nameOf(p))}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
+      <li class="${rank(p) === 1 ? 'first' : ''}"><i>${rank(p)}</i><span class="name">${esc(nameOf(p))}${badgeIcon(p.badge)}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span><b>${p.score}</b></li>`).join('')}</ol>
     <button class="big share-game" data-act="share-game">${T('shareGame')}</button>
     <h2>${T('portraits')}</h2>
     <div class="portraits">${v.portraits.map(x => `
@@ -952,6 +971,176 @@ function endScreen() {
       ${v.host ? `<button class="primary big" data-act="replay">${T('replay')}</button>` : `<p class="wait">${T('hostCanReplay')}</p>`}
       <button class="big" data-act="home">${T('backHome')}</button>
     </div>`;
+}
+
+// ——— Soutien en fin de partie : roue du mécène, paiement, badges ———
+
+const BADGE_ICONS = { crown: '👑', diamond: '💎' };
+const badgeLabel = b => T(b === 'diamond' ? 'badgeDiamond' : 'badgeCrown');
+const badgeIcon = b => (BADGE_ICONS[b] ? ` <span class="badge-icon" role="img" title="${badgeLabel(b)}" aria-label="${badgeLabel(b)}">${BADGE_ICONS[b]}</span>` : '');
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+let unmountPay = null;
+
+// L'écran du mécène reste affiché tant que ce joueur ne l'a pas quitté (« Plus tard », « Continuer »),
+// et pendant un paiement ou son merci, même si l'hôte est passé à l'écran de fin entre-temps.
+function patronLocal() {
+  const P = ui.patron;
+  if (!P || P.dismissed || !P.view) return false;
+  return view.phase === 'patron' || P.pay === 'paying' || P.pay === 'thanks';
+}
+
+const myName = () => { const me = view.players.find(p => p.id === view.me); return me ? nameOf(me) : ''; };
+const andList = names => names.length < 2 ? names[0] || '' : `${names.slice(0, -1).join(', ')} ${T('and')} ${names.at(-1)}`;
+
+function patronScreen() {
+  const P = ui.patron.view;
+  if (ui.patron.pay === 'thanks') return thanksScreen();
+  if (P.step === 'spin') {
+    const slice = 360 / P.names.length;
+    const slices = P.names.map((_, i) => `var(--${i % 2 ? 'patron-2' : 'patron-1'}) ${i * slice}deg ${(i + 1) * slice}deg`).join(',');
+    return `
+      ${homeLogo()}
+      <div class="patron">
+        <p class="pill">${T('patronSpin')}</p>
+        <div class="wheel-box patron-wheel">
+          <div class="lights">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20}deg;--n:${i % 2}"></i>`).join('')}</div>
+          <div class="pointer"></div>
+          <div class="wheel" style="background:conic-gradient(${slices})">${P.names.map((n, i) =>
+            `<span style="transform:rotate(${(i + 0.5) * slice}deg)"><b>${esc(n)}</b></span>`).join('')}</div>
+          <div class="hub"></div>
+        </div>
+      </div>`;
+  }
+  const named = P.patron ? `<p class="pill">${T(P.role === 'patron' ? 'patronSpoke' : 'patronNamed', esc(P.patron))}</p>` : '';
+  const pay = `<div class="pay" data-pay></div><p class="pay-error" data-pay-error hidden>${T('payFailed')}</p>`;
+  const later = `<button class="link" data-act="patron-later">${T('later')}</button>`;
+  const banners = '<div class="paid-banners" data-banners></div><div class="cheered" data-cheered hidden></div>';
+  if (P.role === 'patron') return `
+    ${banners}
+    <div class="patron verdict">
+      ${named}
+      <div class="big-emoji">🫵</div>
+      <h1>${T('patronTitle', esc(myName()))}</h1>
+      <p class="pitch">${T('pitch1')}</p>
+      ${pay}${later}
+    </div>`;
+  if (P.role === 'champion') return `
+    ${banners}
+    <div class="patron verdict">
+      ${named}
+      <div class="big-emoji">🏆</div>
+      <h1>${T('champTitle', esc(myName()))}</h1>
+      <p class="pitch">${T('pitch2')}</p>
+      <p class="nudge" data-nudge hidden></p>
+      <p class="tax">${taxLine()}</p>
+      <div class="pulse">${pay}</div>${later}
+    </div>`;
+  const champs = P.champions.map(esc);
+  const text = P.patron ? T('freeText', esc(P.patron), andList(champs), champs.length > 1) : T('freeTextChamps', andList(champs), champs.length > 1);
+  return `
+    ${banners}
+    <div class="patron verdict">
+      ${named}
+      <div class="big-emoji">😮‍💨</div>
+      <h1>${T('freeTitle')}</h1>
+      <p class="pitch">${text}</p>
+      ${P.patron ? `<button class="primary big" data-act="cheer">${T('cheer', esc(P.patron))}</button>` : ''}
+      ${ui.patron.showPay ? pay : `<button class="link" data-act="pay-anyway">${T('payAnyway')}</button>`}
+      ${later}
+    </div>`;
+}
+
+// « T'as gagné, alors pour toi c'est plus cher 😂 💸 » : le dernier mot reste collé aux emojis animés.
+function taxLine() {
+  const words = T('champTax').split(' '), last = words.pop();
+  return `<span class="write">${esc(words.join(' '))} <span class="tax-end">${esc(last)} <i class="laugh">😂</i> <i class="bills"><s>💸</s><s>💸</s><s>💸</s></i></span></span>`;
+}
+
+function thanksScreen() {
+  const b = ui.patron.badge;
+  return `
+    <div class="patron thanks">
+      <div class="rain" data-rain></div>
+      <h1>${T(b === 'diamond' ? 'thanks2' : 'thanks1', esc(myName()))}</h1>
+      <div class="badge-card ${b}">${BADGE_ICONS[b]} ${badgeLabel(b)}</div>
+      <p>${T('badgeKeep')}</p>
+      <button class="primary big" data-act="patron-continue">${T('continue')}</button>
+    </div>`;
+}
+
+// Après chaque rendu de l'écran du mécène : la roue tourne, ou le bouton de paiement se monte.
+function startPatron() {
+  const P = ui.patron.view;
+  if (ui.patron.pay === 'thanks') return rainBills();
+  if (P.step === 'spin') {
+    const wheel = $app.querySelector('.patron-wheel .wheel'), stage = $app.querySelector('.patron-wheel');
+    if (!wheel || P.angle == null) return;
+    if (reducedMotion()) { wheel.style.transition = 'none'; wheel.style.transform = `rotate(${P.angle}deg)`; stage.classList.add('done'); return; }
+    boardTimers.push(setTimeout(() => { wheel.style.transform = `rotate(${P.angle}deg)`; stage.classList.add('spinning'); }, 60));
+    boardTimers.push(setTimeout(() => { stage.classList.remove('spinning'); stage.classList.add('done'); }, PATRON_SPIN_MS - 300));
+    return;
+  }
+  patchPatron();
+  const slot = $app.querySelector('[data-pay]');
+  if (!slot) return;
+  const role = P.role, badge = role === 'champion' ? 'diamond' : 'crown';
+  import('./pay.js').then(({ mountPay }) => mountPay(slot, {
+    amount: P.amount, lang,
+    labels: { card: T('payCard'), cardPay: T('payCardGo', (P.amount / 100).toLocaleString(lang)), close: T('later') },
+    on: {
+      start() { ui.patron.pay = 'paying'; $app.querySelector('[data-pay-error]')?.setAttribute('hidden', ''); },
+      success() {
+        saveBadge(badge);
+        send({ t: 'paid', badge });
+        Object.assign(ui.patron, { pay: 'thanks', badge });
+        render();
+      },
+      cancel() { ui.patron.pay = 'idle'; if (view.phase !== 'patron') render(); },
+      error() {
+        ui.patron.pay = 'idle';
+        if (view.phase !== 'patron') return render();
+        $app.querySelector('[data-pay-error]')?.removeAttribute('hidden');
+      },
+      unavailable() { slot.hidden = true; },
+    },
+  })).then(off => { if (slot.isConnected) unmountPay = off; else off?.(); }).catch(() => { slot.hidden = true; });
+}
+
+// Mises à jour sans redessiner : bandeaux des paiements, encouragements, petit mot au champion.
+function patchPatron() {
+  const P = ui.patron.view;
+  const box = $app.querySelector('[data-banners]');
+  if (box) {
+    const others = P.paid.filter(x => x.name !== myName() || ui.patron.pay !== 'thanks');
+    box.innerHTML = others.map(x => `<div class="paid-banner ${x.badge}">${T(x.badge === 'diamond' ? 'paidDiamond' : 'paidCrown', esc(x.name))}</div>`).join('');
+  }
+  const nudge = $app.querySelector('[data-nudge]');
+  if (nudge && P.role === 'champion' && P.patron && P.paid.some(x => x.role === 'patron')) {
+    nudge.textContent = T('champNudge', P.patron);
+    nudge.hidden = false;
+  }
+  if (P.cheer && P.cheer.seq > ui.patron.cheerSeen) {
+    ui.patron.cheerSeen = P.cheer.seq;
+    const toast = $app.querySelector('[data-cheered]');
+    if (toast) {
+      toast.textContent = T('cheered', P.cheer.from);
+      toast.hidden = false;
+      toast.classList.remove('show'); void toast.offsetWidth; toast.classList.add('show');
+      setTimeout(() => { toast.hidden = true; }, 3000);
+    }
+    navigator.vibrate?.(200);
+  }
+}
+
+function rainBills() {
+  const box = $app.querySelector('[data-rain]');
+  if (!box || reducedMotion()) return;
+  for (let i = 0; i < 14; i++) {
+    const b = document.createElement('i');
+    b.textContent = '💸';
+    b.style.cssText = `left:${5 + Math.random() * 90}%;animation-delay:${Math.round(Math.random() * 900)}ms;--r:${Math.round(Math.random() * 60 - 30)}deg`;
+    box.append(b);
+  }
 }
 
 // Diaporama de fin : une photo toutes les 4 secondes, avec les emojis envoyés juste après.
@@ -1044,6 +1233,19 @@ $app.addEventListener('click', async e => {
       else { await navigator.clipboard.writeText(`${text} ${url}`); el.textContent = T('linkCopied'); }
     } catch { /* partage annulé */ }
   }
+  else if (act === 'patron-later' || act === 'patron-continue') {
+    ui.patron.dismissed = true;
+    if (ui.patron.pay !== 'thanks') ui.patron.pay = 'idle';
+    send({ t: 'patron-done' });
+    render();
+    scrollTo(0, 0);
+  }
+  else if (act === 'cheer') {
+    send({ t: 'cheer' });
+    el.disabled = true;                 // un encouragement toutes les 5 secondes
+    setTimeout(() => { el.disabled = false; }, 5000);
+  }
+  else if (act === 'pay-anyway') setUi({ patron: { ...ui.patron, showPay: true } });
   else if (act === 'share-game') {
     // Message neutre : ni prénom ni score, seulement le lien du jeu.
     const text = T('shareGameText'), url = T('shareGameUrl');
