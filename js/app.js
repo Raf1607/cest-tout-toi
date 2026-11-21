@@ -372,103 +372,6 @@ function join(code, name = store.get('ctt-name') || '') {
   });
 }
 
-// ——— Scanner le QR code de l'hôte ———
-// La caméra ne sert qu'à lire le code, sur le téléphone : aucune image n'est envoyée ni gardée.
-// Lecteur natif du navigateur s'il existe (Android), sinon la bibliothèque jsQR, chargée à la demande.
-const JSQR = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
-let scanner = null;
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if ([...document.scripts].some(s => s.src === src)) return resolve();
-    const s = document.createElement('script');
-    s.src = src; s.onload = resolve; s.onerror = reject;
-    document.head.append(s);
-  });
-}
-
-async function qrReader() {
-  if ('BarcodeDetector' in window) {
-    try {
-      const d = new BarcodeDetector({ formats: ['qr_code'] });
-      return async v => (await d.detect(v))[0]?.rawValue || null;
-    } catch { /* format non pris en charge : jsQR */ }
-  }
-  await loadScript(JSQR);
-  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
-  return async v => {
-    const vw = v.videoWidth || v.width, vh = v.videoHeight || v.height;
-    if (!vw) return null;
-    const w = 480, h = Math.round((vh * w) / vw);
-    canvas.width = w; canvas.height = h;
-    ctx.drawImage(v, 0, 0, w, h);
-    return window.jsQR?.(ctx.getImageData(0, 0, w, h).data, w, h)?.data || null;
-  };
-}
-
-// Le QR code du jeu contient le lien d'invitation (…?p=CODE) ; on accepte aussi un code seul.
-function codeFrom(text) {
-  try {
-    const p = new URL(text).searchParams.get('p');
-    if (p) return p.toUpperCase().replace(/[^A-Z]/g, '').slice(0, CODE_LENGTH);
-  } catch { /* pas une adresse */ }
-  const t = String(text).toUpperCase().replace(/[^A-Z]/g, '');
-  return t.length === CODE_LENGTH ? t : null;
-}
-
-function stopScan() {
-  if (!scanner) return;
-  scanner.stopped = true;
-  scanner.stream?.getTracks().forEach(t => t.stop());
-  scanner = null;
-}
-
-async function startScan() {
-  if (!navigator.mediaDevices?.getUserMedia) return setUi({ screen: 'home', error: T('noCamera') });
-  stopScan();
-  setUi({ screen: 'scan', error: '', notice: '' });
-  const me = scanner = { stopped: false, stream: null };
-  try {
-    me.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-    if (me.stopped) return me.stream.getTracks().forEach(t => t.stop());
-    const video = $app.querySelector('.scan video');
-    video.srcObject = me.stream;
-    await video.play();
-    const read = await qrReader();
-    const loop = async () => {
-      if (me.stopped) return;
-      const code = codeFrom(await read(video).catch(() => null) || '');
-      if (code) return scanned(code);
-      setTimeout(loop, 150);
-    };
-    loop();
-  } catch {
-    if (me.stopped) return;
-    stopScan();
-    setUi({ screen: 'home', error: T('cameraDenied') });
-  }
-}
-
-function scanned(code) {
-  stopScan();
-  navigator.vibrate?.(40);
-  params.set('p', code);
-  history.replaceState(null, '', `?p=${code}`);
-  const name = store.get('ctt-name');
-  if (name) return join(code, name);
-  setUi({ screen: 'home', error: '', notice: '' });
-  $app.querySelector('input[name=name]')?.focus();
-}
-
-function scanScreen() {
-  return `
-    <div class="scan">
-      <div class="scan-view"><video playsinline muted></video><i class="scan-frame"></i></div>
-      <p>${T('scanHint')}</p>
-      <button class="big" data-act="scan-cancel">${T('cancel')}</button>
-    </div>`;
-}
-
 // ——— Affichage ———
 
 function setUi(patch) { Object.assign(ui, patch); render(); }
@@ -499,7 +402,6 @@ function render() {
   boardTimers = [];
   let html;
   if (ui.screen === 'home') html = homeScreen();
-  else if (ui.screen === 'scan') html = scanScreen();
   else if (ui.screen === 'privacy') html = privacyScreen();
   else if (ui.screen === 'howto') html = howtoScreen();
   else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
@@ -552,7 +454,7 @@ const homeLogo = () => `<button class="home-logo" data-act="home" aria-label="${
 
 function homeScreen() {
   if (joinCode()) return joinScreen();
-  return `<div class="home">
+  return `<div class="home"><div class="home-top">
     <div class="lang-switch" role="group" aria-label="Langue / Language">${['fr', 'en'].map(l => `<button data-act="lang" data-lang="${l}" lang="${l}" aria-pressed="${l === lang}">${l.toUpperCase()}</button>`).join('')}</div>
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
@@ -561,10 +463,12 @@ function homeScreen() {
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
     ${ui.notice ? `<p class="notice">${esc(ui.notice)}</p>` : ''}
+    </div>
     <section class="host">
       <label class="button primary big file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <p class="hint">${T('importHint')}</p>
     </section>
+    <div class="home-bottom">
     <section class="how">
       <p class="how-label">${T('howItWorks')}</p>
       <div class="how-buttons">
@@ -573,14 +477,10 @@ function homeScreen() {
       </div>
       ${privacyBadge()}
     </section>
-    <section class="friend">
-      <h2>${T('joinFriend')}</h2>
-      <button data-act="scan">${T('scanHere')}</button>
-    </section>
     <footer class="foot">
       <a href="${T('videoFile')}">${T('video')}</a>
       <a href="${T('aboutPage')}">${T('about')}</a>
-    </footer></div>`;
+    </footer></div></div>`;
 }
 
 // Arrivé par le QR code de l'hôte : il ne reste qu'à donner son prénom.
@@ -1063,8 +963,7 @@ $app.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
   const { act } = el.dataset;
-  if (act === 'scan') startScan();
-  else if (act === 'privacy') { setUi({ screen: 'privacy' }); scrollTo(0, 0); }
+  if (act === 'privacy') { setUi({ screen: 'privacy' }); scrollTo(0, 0); }
   else if (act === 'privacy-close') { setUi({ screen: 'home' }); scrollTo(0, 0); }
   else if (act === 'howto') { setUi({ screen: 'howto', howto: el.dataset.os }); scrollTo(0, 0); }
   else if (act === 'howto-close') { setUi({ screen: 'home' }); scrollTo(0, 0); }
@@ -1074,7 +973,6 @@ $app.addEventListener('click', async e => {
     if (ui.screen === 'game' && view?.phase !== 'end' && !confirm(game ? T('quitHost') : T('quitGuest'))) return;
     leaveGame();
   }
-  else if (act === 'scan-cancel') { stopScan(); setUi({ screen: 'home' }); }
   else if (act === 'lang') { if (el.dataset.lang !== lang) { setLang(el.dataset.lang); saveLang(lang); render(); } }
   else if (act === 'admit') send({ t: 'admit', id: el.dataset.id, ok: el.dataset.ok === '1' });
   else if (act === 'claim') { ui.pickName = false; ui.memberQuery = ''; send({ t: 'claim', author: el.dataset.author }); }
