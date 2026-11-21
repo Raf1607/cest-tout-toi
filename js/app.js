@@ -47,16 +47,7 @@ const fmt = n => n.toLocaleString(T('locale'));
 const send = msg => (game ? game.handle(myId, msg) : client?.send(msg));
 // Envoi à un invité : un canal qui se ferme (téléphone en veille, départ) peut refuser l'envoi.
 const post = (conn, msg) => { try { if (conn.open) conn.send(msg); } catch { /* il se reconnectera */ } };
-// Ouverte sur l'ordinateur qui fait tourner serve.py, la page connaît l'adresse du jeu sur le
-// Wi-Fi : c'est elle qu'on donne aux téléphones (localhost ne mènerait nulle part).
-let lanUrl = null;
-if (['localhost', '127.0.0.1'].includes(location.hostname)) {
-  fetch('lan.json').then(r => (r.ok ? r.json() : null)).then(d => {
-    lanUrl = d?.url || null;
-    if (lanUrl && ui.screen === 'home') render();
-  }).catch(() => { /* servi par un autre serveur */ });
-}
-const inviteUrl = code => `${lanUrl || location.origin + location.pathname}?p=${code}`;
+const inviteUrl = code => `${location.origin + location.pathname}?p=${code}`;
 
 // Compteur de parties, tous joueurs confondus : un service public gratuit (Abacus) garde le total,
 // faute de serveur à nous. Il ne reçoit qu'un « +1 », rien sur la partie. S'il est en panne, on n'affiche rien.
@@ -495,15 +486,6 @@ function homeScreen() {
     </header>
     ${ui.error ? `<p class="error">${esc(ui.error)}</p>` : ''}
     ${ui.notice ? `<p class="notice">${esc(ui.notice)}</p>` : ''}
-    ${lanUrl ? `
-    <section class="card invite">
-      <div class="qr">${qrSvg(lanUrl)}</div>
-      <div>
-        <h2>${T('lanTitle')}</h2>
-        <p>${T('lanText')}</p>
-        <p class="url">${esc(lanUrl)}</p>
-      </div>
-    </section>` : ''}
     <section class="host">
       <label class="button primary big file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <p class="hint">${T('importHint')}</p>

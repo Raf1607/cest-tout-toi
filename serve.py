@@ -3,15 +3,14 @@
 
     python3 serve.py
 
-Il affiche au démarrage l'adresse à ouvrir sur les téléphones ; la page ouverte sur cet
-ordinateur (http://localhost:8790) montre la même adresse en QR code.
+Il affiche au démarrage l'adresse à ouvrir sur les téléphones (la page, elle, est identique
+au site en ligne).
 Seuls les fichiers du jeu sont servis (index.html, le dossier js et les discussions d'exemple
 du dossier samples) : rien d'autre du dossier n'est accessible depuis le réseau.
 Il désactive le cache du navigateur : chaque rechargement de la page prend la dernière
 version des fichiers du jeu.
 """
 import http.server
-import json
 import os
 import re
 import signal
@@ -30,18 +29,6 @@ class GameServer(http.server.ThreadingHTTPServer):
 
 
 class GameHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path.split('?', 1)[0] == '/lan.json':   # adresse réseau, pour le QR code de la page d'accueil
-            ip = lan_address()
-            body = json.dumps({'url': f'http://{ip}:{PORT}/' if ip else None}).encode()
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        super().do_GET()
-
     def send_head(self):
         path = unquote(self.path.split('?', 1)[0].split('#', 1)[0])
         if not ALLOWED.match(path) or '..' in path:
