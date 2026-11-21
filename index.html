@@ -85,7 +85,7 @@
   .privacy-badge u { color: var(--good); text-underline-offset: 3px; margin-left: 2px; }
   .how { display: flex; flex-direction: column; gap: 10px; }
   .how-label { text-align: center; color: var(--ink); font-weight: 600; font-size: 15px; }
-  .lang-switch { position: absolute; top: 0; right: 0; display: flex; border: 1px solid var(--line); border-radius: 99px; padding: 2px; z-index: 1; }
+  .lang-switch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); display: flex; border: 1px solid var(--line); border-radius: 99px; padding: 2px; z-index: 1; }
   .lang-switch button { padding: 4px 10px; font-size: 12px; font-weight: 700; border: 0; border-radius: 99px; background: none; color: var(--muted); }
   .lang-switch button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); }
   .how-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -398,17 +398,17 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211515",
-  "./js/tics.js": "./js/tics.js?v=202611211515",
-  "./js/game.js": "./js/game.js?v=202611211515",
-  "./js/net.js": "./js/net.js?v=202611211515",
-  "./js/media.js": "./js/media.js?v=202611211515",
-  "./js/records.js": "./js/records.js?v=202611211515",
-  "./js/i18n.js": "./js/i18n.js?v=202611211515",
-  "./js/resume.js": "./js/resume.js?v=202611211515",
-  "./js/phonk.js": "./js/phonk.js?v=202611211515"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611211520",
+  "./js/tics.js": "./js/tics.js?v=202611211520",
+  "./js/game.js": "./js/game.js?v=202611211520",
+  "./js/net.js": "./js/net.js?v=202611211520",
+  "./js/media.js": "./js/media.js?v=202611211520",
+  "./js/records.js": "./js/records.js?v=202611211520",
+  "./js/i18n.js": "./js/i18n.js?v=202611211520",
+  "./js/resume.js": "./js/resume.js?v=202611211520",
+  "./js/phonk.js": "./js/phonk.js?v=202611211520"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611211515"></script>
+<script type="module" src="js/app.js?v=202611211520"></script>
 </body>
 </html>
