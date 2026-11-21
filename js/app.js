@@ -58,9 +58,8 @@ fetch(`${COUNTER}/get/${COUNTER_KEY}`).then(r => (r.ok ? r.json() : null)).then(
   gamesPlayed = d?.value ?? null;
   if (gamesPlayed && ui.screen === 'home') render();
 }).catch(() => { /* compteur indisponible */ });
-let demoGame = false;
 const countGame = () => {
-  if (demoGame || ['localhost', '127.0.0.1'].includes(location.hostname)) return;
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) return;
   fetch(`${COUNTER}/hit/${COUNTER_KEY}`).catch(() => { /* compteur indisponible */ });
 };
 
@@ -216,7 +215,7 @@ async function launch(analysis, entries, file, snap = null) {
 // de la discussion (jusqu'à 100 Mo ; au-delà, la partie reprend sans les médias).
 const RAW_MAX = 100 * 1024 * 1024;
 async function saveSession(analysis, file) {
-  const key = `${myId}:session`, value = { analysis, file, demo: demoGame };
+  const key = `${myId}:session`, value = { analysis, file };
   try { await saveSave(key, value); }
   catch {
     const raw = file && file.size <= RAW_MAX ? { name: file.name, type: file.type, data: await file.arrayBuffer() } : null;
@@ -250,7 +249,6 @@ async function resumeHost() {
     const session = await loadSave(`${myId}:session`);
     const snap = await loadSave(`${myId}:state`);
     if (!session || !snap || snap.hostId !== myId) throw new Error('nothing');
-    demoGame = !!session.demo;
     const raw = session.file?.data;
     const file = raw ? new File([raw], session.file.name, { type: session.file.type }) : session.file;
     const { entries } = file ? await readExport(file) : { entries: new Map() };
@@ -491,7 +489,7 @@ const homeLogo = () => `<button class="home-logo" data-act="home" aria-label="${
 
 function homeScreen() {
   if (joinCode()) return joinScreen();
-  return `
+  return `<div class="home">
     <header class="brand">
       <h1>Who is <span>bro</span>&nbsp;?</h1>
       <p>${T('tagline')}</p>
@@ -508,18 +506,16 @@ function homeScreen() {
         <button data-act="howto" data-os="android">${icon(ICONS.phone)}Android</button>
       </div>
       ${privacyBadge()}
-      <button class="link" data-act="demo">${T('demo')}</button>
     </section>
     <section class="friend">
       <h2>${T('joinFriend')}</h2>
-      <p>${T('joinFriendHint')}</p>
       <button data-act="scan">${T('scanHere')}</button>
     </section>
     <footer class="foot">
       <a href="${T('videoFile')}">${T('video')}</a>
       <a href="${T('aboutPage')}">${T('about')}</a>
       <button class="link" data-act="lang" lang="${lang === 'fr' ? 'en' : 'fr'}">${T('otherLang')}</button>
-    </footer>`;
+    </footer></div>`;
 }
 
 // Arrivé par le QR code de l'hôte : il ne reste qu'à donner son prénom.
@@ -1002,12 +998,7 @@ $app.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
   const { act } = el.dataset;
-  if (act === 'demo') {
-    demoGame = true;                          // la démo ne compte pas dans le total
-    const name = T('demoFile');
-    host(() => fetch('samples/' + encodeURIComponent(name)).then(r => r.blob()).then(b => new File([b], name, { type: 'application/zip' })));
-  }
-  else if (act === 'scan') startScan();
+  if (act === 'scan') startScan();
   else if (act === 'privacy') { setUi({ screen: 'privacy' }); scrollTo(0, 0); }
   else if (act === 'privacy-close') { setUi({ screen: 'home' }); scrollTo(0, 0); }
   else if (act === 'howto') { setUi({ screen: 'howto', howto: el.dataset.os }); scrollTo(0, 0); }
