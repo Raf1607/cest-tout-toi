@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<!-- Tutoriel animé « exporter de WhatsApp puis importer dans Who is bro ? », 1080×1920.
+     Chaque image est calculée par renderAt(t) (t en secondes), sans animation CSS : rendu identique à chaque fois.
+     Paramètres : ?os=iphone|android&lang=fr|en ; ajouter &play pour l'aperçu dans Chrome.
+     Rendu MP4 : node tools/video/render-howto.mjs -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#16131d; --surface:#221e2c; --surface-2:#2d2839; --line:#3a3448; --ink:#f5f1e8; --muted:#a7a1b5; --accent:#ffcf3f; --accent-ink:#1e1a10; --good:#52d18f; --bad:#ff7a6b; --display:'Bricolage Grotesque', system-ui, sans-serif; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
+  body { font: 500 32px/1.3 system-ui, -apple-system, sans-serif; color: var(--ink); }
+  #stage { position: absolute; inset: 0; background: radial-gradient(circle at 50% 45%, #2a2438 0, var(--bg) 62%); overflow: hidden; }
+  .disp { font-family: var(--display); font-weight: 800; letter-spacing: -0.02em; }
+  .tag { background: var(--accent); color: var(--accent-ink); padding: 0 .14em; border-radius: .18em; display: inline-block; }
+
+  /* Légende en haut */
+  #cap { position: absolute; left: 60px; right: 60px; top: 90px; height: 250px; display: flex; align-items: center; gap: 30px; }
+  #capNum { flex: none; width: 104px; height: 104px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font: 800 62px/1 var(--display); }
+  #capText { font: 800 58px/1.1 var(--display); letter-spacing: -0.01em; }
+  #capText b { color: var(--accent); font-weight: 800; }
+  #dots { position: absolute; left: 0; right: 0; top: 345px; display: flex; justify-content: center; gap: 16px; }
+  #dots i { width: 16px; height: 16px; border-radius: 50%; background: var(--line); }
+  #dots i.on { background: var(--accent); width: 44px; border-radius: 8px; }
+  #brand { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; font: 800 44px/1 var(--display); color: var(--muted); }
+  #brand .tag { transform: rotate(-3deg); margin: 0 .15em; }
+
+  /* Téléphone */
+  .phone { position: absolute; left: 170px; top: 400px; width: 740px; height: 1420px; border-radius: 92px; background: #000; border: 14px solid #2d2839; box-shadow: 0 40px 120px rgba(0,0,0,.55); }
+  .screen { position: absolute; inset: 0; border-radius: 78px; overflow: hidden; background: #0d0b12; }
+  .scr { position: absolute; inset: 0; display: none; background: #0d0b12; }
+  .scr.overlay { background: none; }
+  .dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .box { position: absolute; }
+  .status { height: 84px; display: flex; align-items: center; justify-content: space-between; padding: 14px 64px 0; font: 700 28px system-ui, sans-serif; }
+  .island { position: absolute; top: 22px; left: 50%; width: 200px; height: 56px; margin-left: -100px; border-radius: 30px; background: #000; z-index: 50; }
+  .punch { position: absolute; top: 30px; left: 50%; width: 36px; height: 36px; margin-left: -18px; border-radius: 50%; background: #000; z-index: 50; }
+  .bars { display: flex; gap: 6px; align-items: flex-end; }
+  .bars i { width: 7px; background: var(--ink); border-radius: 2px; }
+
+  /* WhatsApp stylisé */
+  .wa-head { display: flex; align-items: center; gap: 18px; padding: 10px 26px 18px; background: var(--surface); }
+  .chev { font: 400 64px/1 system-ui; color: var(--good); width: 34px; }
+  .avatar { flex: none; width: 76px; height: 76px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font: 800 30px var(--display); }
+  .wa-name { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; margin-left: -10px; border-radius: 14px; }
+  .wa-name b { font-size: 34px; }
+  .wa-name small { font-size: 24px; color: var(--muted); }
+  .kebab { margin-left: auto; width: 60px; height: 70px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7px; border-radius: 50%; }
+  .kebab i { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); }
+  .msgs { padding: 30px 28px; display: flex; flex-direction: column; gap: 18px; }
+  .msg { max-width: 78%; padding: 16px 22px; border-radius: 26px 26px 26px 8px; background: var(--surface-2); font-size: 30px; }
+  .msg small { display: block; font-weight: 700; font-size: 24px; margin-bottom: 2px; }
+  .msg.me { align-self: flex-end; background: #1f5c46; border-radius: 26px 26px 8px 26px; }
+  .input { position: absolute; left: 22px; right: 22px; bottom: 44px; display: flex; gap: 14px; }
+  .input div { flex: 1; height: 84px; border-radius: 42px; background: var(--surface); display: flex; align-items: center; padding: 0 30px; color: var(--muted); }
+  .input span { width: 84px; height: 84px; border-radius: 50%; background: var(--good); }
+  .topbar { display: flex; align-items: center; padding: 10px 26px 18px; gap: 14px; font-size: 32px; }
+  .topbar .title { flex: 1; text-align: center; font-weight: 700; margin-right: 48px; }
+  .list { background: var(--surface); border-radius: 26px; margin: 0 28px 26px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 22px; padding: 0 28px; height: 96px; border-bottom: 1px solid var(--line); font-size: 31px; }
+  .row:last-child { border-bottom: 0; }
+  .row .ic { width: 52px; height: 52px; border-radius: 14px; background: var(--surface-2); flex: none; }
+  .row.good { color: var(--good); font-weight: 700; }
+  .row.bad { color: var(--bad); }
+  .press { background: rgba(255,255,255,.14) !important; }
+  .sheet { left: 22px; right: 22px; bottom: 34px; display: flex; flex-direction: column; gap: 18px; }
+  .sheet .list { margin: 0; }
+  .sheet .note { padding: 26px 30px; font-size: 25px; color: var(--muted); text-align: center; border-bottom: 1px solid var(--line); }
+  .sheet .opt { height: 104px; display: grid; place-items: center; font-size: 34px; color: #6fb4ff; border-bottom: 1px solid var(--line); }
+  .sheet .opt:last-child { border-bottom: 0; }
+  .sheet .opt.bold { font-weight: 700; }
+  .panel { left: 0; right: 0; bottom: 0; background: #1a1722; border-radius: 40px 40px 0 0; padding: 20px 0 50px; }
+  .grab { width: 80px; height: 10px; border-radius: 5px; background: var(--line); margin: 0 auto 24px; }
+  .file { display: flex; align-items: center; gap: 22px; padding: 0 34px 26px; border-bottom: 1px solid var(--line); margin-bottom: 26px; }
+  .zip { flex: none; width: 92px; height: 108px; border-radius: 16px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font: 800 26px var(--display); }
+  .file b { display: block; font-size: 30px; }
+  .file small { color: var(--muted); font-size: 24px; }
+  .apps { display: flex; justify-content: space-around; padding: 0 20px 30px; }
+  .app { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 22px; color: var(--muted); width: 150px; border-radius: 22px; padding: 8px 0; }
+  .app i { width: 108px; height: 108px; border-radius: 28px; display: grid; place-items: center; font-style: normal; }
+  .menu { right: 18px; top: 104px; width: 470px; background: #2a2635; border-radius: 22px; padding: 12px 0; box-shadow: 0 20px 60px rgba(0,0,0,.5); transform-origin: top right; }
+  .menu div { padding: 0 34px; height: 92px; display: flex; align-items: center; justify-content: space-between; font-size: 31px; }
+  .dialog { left: 60px; right: 60px; top: 470px; background: #2a2635; border-radius: 36px; padding: 44px 44px 26px; }
+  .dialog h3 { font-size: 38px; margin-bottom: 18px; }
+  .dialog p { color: var(--muted); font-size: 28px; }
+  .dialog .btns { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin-top: 30px; }
+  .dialog .btns span { color: var(--good); font-weight: 700; font-size: 29px; padding: 16px 20px; border-radius: 30px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px 0; padding: 10px 20px 20px; justify-items: center; }
+  .toast { left: 90px; right: 90px; bottom: 200px; background: var(--ink); color: #1b1824; border-radius: 30px; padding: 26px 30px; font-weight: 700; font-size: 30px; display: flex; gap: 18px; align-items: center; }
+  .toast i { flex: none; width: 54px; height: 54px; border-radius: 50%; background: var(--good); color: #10221a; display: grid; place-items: center; font-style: normal; font-weight: 800; }
+
+  /* Who is bro ? */
+  .wib { background: var(--bg) !important; }
+  .wib-in { padding: 40px 44px; display: flex; flex-direction: column; gap: 26px; text-align: center; }
+  .wib-logo { font: 800 92px/1 var(--display); letter-spacing: -0.02em; margin-top: 60px; }
+  .wib-logo .tag { transform: rotate(-3deg); margin: 0 .12em; }
+  .wib-tag { color: var(--muted); font-size: 29px; }
+  .big { height: 120px; border-radius: 28px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font: 800 38px var(--display); margin-top: 40px; }
+  .big.press { background: var(--accent) !important; filter: brightness(.8); }
+  .badge { border: 2px solid rgba(82,209,143,.45); background: rgba(82,209,143,.12); border-radius: 26px; padding: 24px; text-align: left; font-size: 27px; }
+  .badge b { display: block; font: 700 30px var(--display); }
+  .badge small { color: var(--muted); font-size: 25px; }
+  .bar { height: 22px; border-radius: 11px; background: var(--surface-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--good); }
+  .card { background: var(--surface); border: 2px solid var(--line); border-radius: 30px; padding: 34px; text-align: left; }
+  .qr { align-self: center; width: 400px; height: 400px; background: #fff; border-radius: 26px; padding: 20px; }
+  .players { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+  .players div { background: var(--surface); border: 2px solid var(--line); border-radius: 22px; padding: 20px 26px; font-size: 31px; font-weight: 700; display: flex; justify-content: space-between; }
+  .players small { color: var(--muted); font-weight: 500; }
+
+  /* Doigt */
+  #finger { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; background: rgba(255,255,255,.38); border: 4px solid rgba(255,255,255,.9); z-index: 100; display: none; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+  #ripple { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 6px solid var(--accent); z-index: 99; display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="cap"><div id="capNum"></div><div id="capText"></div></div>
+  <div id="dots"><i></i><i></i><i></i><i></i></div>
+
+  <div class="phone"><div class="screen" id="screen">
+    <div id="notch"></div>
+
+    <!-- Discussion WhatsApp -->
+    <div class="scr" id="chat">
+      <div class="status" style="background:var(--surface)"><span>21:42</span><span class="bars"><i style="height:12px"></i><i style="height:18px"></i><i style="height:24px"></i><i style="height:30px"></i></span></div>
+      <div class="wa-head">
+        <span class="chev" id="chev"></span>
+        <div class="avatar">LP</div>
+        <div class="wa-name" id="grpName"><b>Les Potes</b><small data-t="members"></small></div>
+        <div class="kebab" id="kebab"><i></i><i></i><i></i></div>
+      </div>
+      <div class="msgs">
+        <div class="msg"><small style="color:#ff9f7a">Julie</small><span data-t="m1"></span></div>
+        <div class="msg"><small style="color:#7ad3ff">Max</small><span data-t="m2"></span></div>
+        <div class="msg me" data-t="m3"></div>
+        <div class="msg"><small style="color:#c79bff">Inès</small><span data-t="m4"></span></div>
+        <div class="msg"><small style="color:#ff9f7a">Julie</small><span data-t="m5"></span></div>
+      </div>
+      <div class="input"><div>Message</div><span></span></div>
+    </div>
+
+    <!-- iPhone : infos du groupe -->
+    <div class="scr" id="info">
+      <div class="status"><span>21:42</span><span class="bars"><i style="height:12px"></i><i style="height:18px"></i><i style="height:24px"></i><i style="height:30px"></i></span></div>
+      <div class="topbar"><span class="chev">‹</span><span class="title" data-t="groupInfo"></span></div>
+      <div style="position:absolute; left:0; right:0; top:190px; bottom:0; overflow:hidden">
+        <div id="infoBody" style="position:relative">
+          <div style="text-align:center; padding:20px 0 40px">
+            <div class="avatar" style="width:190px; height:190px; font-size:70px; margin:0 auto 22px">LP</div>
+            <div class="disp" style="font-size:54px">Les Potes</div>
+            <div style="color:var(--muted); font-size:28px" data-t="groupSub"></div>
+          </div>
+          <div class="list"><div class="row"><span class="ic"></span><span data-t="r1"></span></div><div class="row"><span class="ic"></span><span data-t="r2"></span></div></div>
+          <div class="list"><div class="row"><span class="ic"></span><span data-t="r3"></span></div><div class="row"><span class="ic"></span><span data-t="r4"></span></div><div class="row"><span class="ic"></span><span data-t="r5"></span></div></div>
+          <div class="list"><div class="row">Inès</div><div class="row">Julie</div><div class="row">Max</div><div class="row" data-t="you"></div></div>
+          <div class="list"><div class="row good" id="exportRow" data-t="export"></div><div class="row bad" data-t="clear"></div></div>
+          <div class="list"><div class="row bad" data-t="leave"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- iPhone : joindre les médias ? -->
+    <div class="scr overlay" id="mediaSheet"><div class="dim"></div>
+      <div class="box sheet">
+        <div class="list"><div class="note" data-t="mediaNote"></div><div class="opt" id="optMedia" data-t="attach"></div><div class="opt" data-t="noMedia"></div></div>
+        <div class="list"><div class="opt bold" data-t="cancel"></div></div>
+      </div>
+    </div>
+
+    <!-- iPhone : feuille de partage -->
+    <div class="scr overlay" id="shareIos"><div class="dim"></div>
+      <div class="box panel">
+        <div class="grab"></div>
+        <div class="file"><div class="zip">ZIP</div><div><b>WhatsApp Chat - Les Potes</b><small data-t="zipInfo"></small></div></div>
+        <div class="apps">
+          <div class="app"><i style="background:#3b82f6"></i>AirDrop</div>
+          <div class="app"><i style="background:#52d18f"></i>Messages</div>
+          <div class="app"><i style="background:#60a5fa"></i>Mail</div>
+          <div class="app"><i style="background:#f5f1e8"></i>Notes</div>
+        </div>
+        <div class="list"><div class="row" data-t="copy"></div><div class="row" id="saveFiles"><span data-t="saveFiles"></span><span class="ic" style="margin-left:auto; background:#3b82f6"></span></div><div class="row" data-t="print"></div></div>
+      </div>
+    </div>
+
+    <!-- iPhone : choisir l'emplacement dans Fichiers -->
+    <div class="scr overlay" id="filesIos"><div class="dim"></div>
+      <div class="box panel" style="top:120px">
+        <div style="display:flex; justify-content:space-between; padding:6px 34px 30px; font-size:32px"><span style="color:#6fb4ff" data-t="cancel"></span><b data-t="onPhone"></b><span style="color:#6fb4ff; font-weight:700; padding:0 12px; border-radius:14px" id="saveBtn" data-t="save"></span></div>
+        <div class="list"><div class="row"><span class="ic" style="background:#3b82f6"></span><span data-t="downloads"></span></div><div class="row"><span class="ic" style="background:#3b82f6"></span>WhatsApp</div><div class="row"><span class="ic" style="background:#3b82f6"></span>Documents</div></div>
+        <div class="file" style="border:0; margin:20px 0 0"><div class="zip">ZIP</div><div><b>WhatsApp Chat - Les Potes</b><small data-t="zipInfo"></small></div></div>
+      </div>
+    </div>
+
+    <!-- Android : menu ⋮ puis « Plus » -->
+    <div class="scr overlay" id="menu1"><div class="dim" style="background:none"></div>
+      <div class="box menu"><div data-t="a1"></div><div data-t="a2"></div><div data-t="a3"></div><div data-t="a4"></div><div data-t="a5"></div><div id="plusRow"><span data-t="more"></span><span>›</span></div></div>
+    </div>
+    <div class="scr overlay" id="menu2"><div class="dim" style="background:none"></div>
+      <div class="box menu"><div data-t="report"></div><div data-t="block"></div><div data-t="clear"></div><div id="exportA" style="color:var(--good); font-weight:700" data-t="export"></div><div data-t="shortcut"></div></div>
+    </div>
+    <div class="scr overlay" id="dlg"><div class="dim"></div>
+      <div class="box dialog"><h3 data-t="includeQ"></h3><p data-t="includeNote"></p>
+        <div class="btns"><span id="inclA" data-t="include"></span><span data-t="noMediaA"></span><span data-t="cancelA"></span></div></div>
+    </div>
+    <div class="scr overlay" id="shareA"><div class="dim"></div>
+      <div class="box panel">
+        <div class="grab"></div>
+        <div class="file"><div class="zip">ZIP</div><div><b>WhatsApp Chat - Les Potes</b><small data-t="zipInfo"></small></div></div>
+        <div class="grid">
+          <div class="app" id="filesA"><i style="background:#3b82f6"></i><span data-t="files"></span></div>
+          <div class="app"><i style="background:#52d18f"></i>Drive</div>
+          <div class="app"><i style="background:#ff7a6b"></i>E-mail</div>
+          <div class="app"><i style="background:#60a5fa"></i>Bluetooth</div>
+          <div class="app"><i style="background:#c79bff"></i>Messages</div>
+          <div class="app"><i style="background:#f5f1e8"></i>Notes</div>
+          <div class="app"><i style="background:#ffcf3f"></i><span data-t="nearby"></span></div>
+          <div class="app"><i style="background:#2d2839"></i><span data-t="moreApps"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="scr" id="filesA2">
+      <div class="status"><span>21:43</span><span class="bars"><i style="height:12px"></i><i style="height:18px"></i><i style="height:24px"></i><i style="height:30px"></i></span></div>
+      <div class="topbar"><span class="chev" style="font-size:44px">←</span><span class="title" style="text-align:left" data-t="saveTo"></span></div>
+      <div class="list" style="margin-top:20px"><div class="row"><span class="ic" style="background:#3b82f6"></span><span data-t="downloads"></span></div><div class="row"><span class="ic" style="background:#3b82f6"></span>Documents</div><div class="row"><span class="ic" style="background:#3b82f6"></span>WhatsApp</div></div>
+      <div class="file" style="border:0; margin-top:10px"><div class="zip">ZIP</div><div><b>WhatsApp Chat - Les Potes</b><small data-t="zipInfo"></small></div></div>
+      <div style="position:absolute; left:40px; right:40px; bottom:70px; height:110px; border-radius:55px; background:var(--good); color:#10221a; display:grid; place-items:center; font-weight:800; font-size:34px" id="saveA" data-t="save"></div>
+    </div>
+
+    <div class="scr overlay" id="toast"><div class="box toast"><i>✓</i><span data-t="saved"></span></div></div>
+
+    <!-- Who is bro ? : accueil -->
+    <div class="scr wib" id="wib">
+      <div class="status"><span>21:43</span><span class="bars"><i style="height:12px"></i><i style="height:18px"></i><i style="height:24px"></i><i style="height:30px"></i></span></div>
+      <div class="wib-in">
+        <div class="wib-logo">Who is<span class="tag">bro</span>?</div>
+        <div class="wib-tag" data-t="tagline"></div>
+        <div class="big" id="launch" data-t="launch"></div>
+        <div class="badge"><b data-t="noData"></b><small data-t="noDataSub"></small></div>
+      </div>
+    </div>
+
+    <!-- Choix du fichier -->
+    <div class="scr overlay" id="pick"><div class="dim"></div>
+      <div class="box panel" style="top:330px">
+        <div class="grab"></div>
+        <div style="padding:0 34px 24px; font:800 40px var(--display)" data-t="recent"></div>
+        <div class="file" id="fileRow" style="margin:0 20px; padding:22px 14px; border-radius:24px; border:0; background:var(--surface)"><div class="zip">ZIP</div><div><b>WhatsApp Chat - Les Potes</b><small data-t="justNow"></small></div></div>
+        <div class="file" style="margin:10px 20px 0; padding:22px 14px; border:0; opacity:.45"><div class="zip" style="background:var(--surface-2); color:var(--muted)">PDF</div><div><b>Facture.pdf</b><small data-t="lastWeek"></small></div></div>
+      </div>
+    </div>
+
+    <!-- Lecture -->
+    <div class="scr wib" id="prog">
+      <div class="status"><span>21:43</span><span></span></div>
+      <div class="wib-in" style="padding-top:420px">
+        <div class="card"><div style="font:800 38px var(--display); margin-bottom:24px" data-t="reading"></div><div class="bar"><i id="progBar"></i></div></div>
+      </div>
+    </div>
+
+    <!-- Salon -->
+    <div class="scr wib" id="lobby">
+      <div class="status"><span>21:43</span><span></span></div>
+      <div class="wib-in" style="gap:22px; padding-top:20px">
+        <div class="disp" style="font-size:52px">Les Potes</div>
+        <div class="qr"><canvas id="qr" width="360" height="360"></canvas></div>
+        <div class="wib-tag" data-t="scan"></div>
+        <div class="players" id="players">
+          <div><span data-t="host"></span><small data-t="hostTag"></small></div>
+          <div>Julie</div><div>Max</div><div>Inès</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="ripple"></div>
+    <div id="finger"></div>
+  </div></div>
+
+  <div id="brand">Who is<span class="tag">bro</span>?</div>
+</div>
+
+<script>
+const q = new URLSearchParams(location.search);
+const OS = q.get('os') === 'android' ? 'android' : 'iphone';
+const LANG = q.get('lang') === 'en' ? 'en' : 'fr';
+const $ = id => document.getElementById(id);
+
+const L = {
+  fr: {
+    members: 'Inès, Julie, Max, toi', m1: 'Qui ramène les bières samedi ?', m2: 'Pas moi, j\'ai payé les pizzas la dernière fois', m3: 'Je m\'en occupe', m4: 'Max qui esquive, comme d\'hab', m5: 'Haha 😂',
+    groupInfo: 'Infos du groupe', groupSub: 'Groupe · 4 membres', r1: 'Médias, liens et docs', r2: 'Messages importants', r3: 'Notifications', r4: 'Fond d\'écran', r5: 'Enregistrer dans Photos', you: 'Toi',
+    export: 'Exporter la discussion', clear: 'Effacer la discussion', leave: 'Quitter le groupe',
+    mediaNote: 'Joindre les médias produira une discussion plus lourde.', attach: 'Joindre les médias', noMedia: 'Sans médias', cancel: 'Annuler',
+    zipInfo: 'Archive ZIP · 18 Mo', copy: 'Copier', saveFiles: 'Enregistrer dans Fichiers', print: 'Imprimer', onPhone: 'Sur mon iPhone', save: 'Enregistrer', downloads: 'Téléchargements',
+    a1: 'Infos du groupe', a2: 'Médias du groupe', a3: 'Rechercher', a4: 'Notifications', a5: 'Fond d\'écran', more: 'Plus', report: 'Signaler', block: 'Quitter le groupe', shortcut: 'Ajouter un raccourci',
+    includeQ: 'Inclure les médias ?', includeNote: 'Inclure les médias augmentera la taille de la discussion exportée.', include: 'INCLURE LES MÉDIAS', noMediaA: 'SANS MÉDIAS', cancelA: 'ANNULER',
+    files: 'Fichiers', nearby: 'Partage proche', moreApps: 'Plus', saveTo: 'Enregistrer dans', saved: 'Enregistré sur ton téléphone',
+    tagline: 'Lance un quiz entre potes sur ton groupe WhatsApp.', launch: 'Lancer une partie', noData: 'On ne récupère AUCUNE donnée.', noDataSub: 'Tout reste sur ton tel.',
+    recent: 'Récents', justNow: 'À l\'instant · 18 Mo', lastWeek: 'La semaine dernière', reading: 'Lecture de la discussion…', scan: 'Fais scanner ce QR code à tes potes', host: 'Toi', hostTag: 'hôte',
+    caps: {
+      iphone: ['Dans WhatsApp, ouvre le groupe et touche <b>son nom</b>', '<b>Exporter la discussion</b>, puis <b>Joindre les médias</b>', '<b>Enregistrer dans Fichiers</b>', 'Reviens ici : <b>Lancer une partie</b> et choisis le fichier'],
+      android: ['Dans WhatsApp, ouvre le groupe et touche <b>⋮</b>', '<b>Plus</b> › <b>Exporter la discussion</b> › <b>Inclure les médias</b>', 'Enregistre le fichier dans <b>Fichiers</b>', 'Reviens ici : <b>Lancer une partie</b> et choisis le fichier'],
+      end: 'Tes potes scannent le QR code : <b>c\'est parti !</b>',
+    },
+  },
+  en: {
+    members: 'Inès, Julie, Max, you', m1: 'Who\'s bringing beers on Saturday?', m2: 'Not me, I paid for the pizzas last time', m3: 'I\'ve got it', m4: 'Max dodging, as usual', m5: 'Haha 😂',
+    groupInfo: 'Group info', groupSub: 'Group · 4 members', r1: 'Media, links and docs', r2: 'Starred messages', r3: 'Notifications', r4: 'Wallpaper', r5: 'Save to Photos', you: 'You',
+    export: 'Export Chat', clear: 'Clear Chat', leave: 'Exit Group',
+    mediaNote: 'Attaching media will generate a larger chat archive.', attach: 'Attach Media', noMedia: 'Without Media', cancel: 'Cancel',
+    zipInfo: 'ZIP archive · 18 MB', copy: 'Copy', saveFiles: 'Save to Files', print: 'Print', onPhone: 'On My iPhone', save: 'Save', downloads: 'Downloads',
+    a1: 'Group info', a2: 'Group media', a3: 'Search', a4: 'Notifications', a5: 'Wallpaper', more: 'More', report: 'Report', block: 'Exit group', shortcut: 'Add shortcut',
+    includeQ: 'Include media?', includeNote: 'Including media will increase the size of the exported chat.', include: 'INCLUDE MEDIA', noMediaA: 'WITHOUT MEDIA', cancelA: 'CANCEL',
+    files: 'Files', nearby: 'Nearby Share', moreApps: 'More', saveTo: 'Save to', saved: 'Saved to your phone',
+    tagline: 'Start a quiz with your friends on your WhatsApp group.', launch: 'Start a game', noData: 'We collect NO data at all.', noDataSub: 'Everything stays on your phone.',
+    recent: 'Recents', justNow: 'Just now · 18 MB', lastWeek: 'Last week', reading: 'Reading the chat…', scan: 'Get your friends to scan this QR code', host: 'You', hostTag: 'host',
+    caps: {
+      iphone: ['In WhatsApp, open the group and tap <b>its name</b>', '<b>Export Chat</b>, then <b>Attach Media</b>', '<b>Save to Files</b>', 'Come back here: <b>Start a game</b> and pick the file'],
+      android: ['In WhatsApp, open the group and tap <b>⋮</b>', '<b>More</b> › <b>Export chat</b> › <b>Include media</b>', 'Save the file to <b>Files</b>', 'Come back here: <b>Start a game</b> and pick the file'],
+      end: 'Your friends scan the QR code: <b>let\'s go!</b>',
+    },
+  },
+}[LANG];
+document.documentElement.lang = LANG;
+document.querySelectorAll('[data-t]').forEach(el => { el.innerHTML = L[el.dataset.t]; });
+$('notch').className = OS === 'iphone' ? 'island' : 'punch';
+$('chev').textContent = OS === 'iphone' ? '‹' : '←';
+if (OS === 'iphone') $('kebab').style.visibility = 'hidden';
+else $('chev').style.cssText = 'font-size:44px; color:var(--ink)';
+
+// Faux QR code, toujours le même.
+(() => {
+  const c = $('qr').getContext('2d'), n = 29, s = 360 / n;
+  let seed = 7; const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+  c.fillStyle = '#16131d';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (rnd() < 0.5) c.fillRect(x * s, y * s, s + .5, s + .5);
+  for (const [fx, fy] of [[0, 0], [n - 7, 0], [0, n - 7]]) {
+    c.fillStyle = '#fff'; c.fillRect((fx - 1) * s, (fy - 1) * s, 9 * s, 9 * s);
+    c.fillStyle = '#16131d'; c.fillRect(fx * s, fy * s, 7 * s, 7 * s);
+    c.fillStyle = '#fff'; c.fillRect((fx + 1) * s, (fy + 1) * s, 5 * s, 5 * s);
+    c.fillStyle = '#16131d'; c.fillRect((fx + 2) * s, (fy + 2) * s, 3 * s, 3 * s);
+  }
+})();
+
+// ——— Chronologie ———
+// Écrans : [apparition, manière, disparition, manière]. Les derniers du HTML passent par-dessus.
+const T0 = 12.4;                // à partir d'ici, la partie Who is bro ? est commune aux deux vidéos
+const SHOW = OS === 'iphone' ? {
+  chat: [0, 'none', T0 + .6, 'none'],
+  info: [2.5, 'push', T0 + .6, 'none'],
+  mediaSheet: [5.6, 'up', 7.3, 'up'],
+  shareIos: [7.6, 'up', 9.5, 'none'],
+  filesIos: [9.5, 'up', 11.0, 'up'],
+  toast: [11.2, 'pop', 12.1, 'pop'],
+} : {
+  chat: [0, 'none', T0 + .6, 'none'],
+  menu1: [2.3, 'pop', 3.9, 'none'],
+  menu2: [3.9, 'none', 5.5, 'pop'],
+  dlg: [5.7, 'pop', 7.2, 'pop'],
+  shareA: [7.6, 'up', 9.3, 'none'],
+  filesA2: [9.3, 'push', 11.0, 'push'],
+  toast: [11.2, 'pop', 12.1, 'pop'],
+};
+Object.assign(SHOW, {
+  wib: [T0, 'rise', Infinity],
+  pick: [T0 + 1.7, 'up', T0 + 3.4, 'up'],
+  prog: [T0 + 3.5, 'fade', Infinity],
+  lobby: [T0 + 5.0, 'fade', Infinity],
+});
+const TAPS = (OS === 'iphone' ? [
+  [2.1, 'grpName'], [5.2, 'exportRow'], [6.9, 'optMedia'], [9.1, 'saveFiles'], [10.6, 'saveBtn'],
+] : [
+  [1.9, 'kebab'], [3.5, 'plusRow'], [5.1, 'exportA'], [6.8, 'inclA'], [8.9, 'filesA'], [10.6, 'saveA'],
+]).concat([[T0 + 1.3, 'launch'], [T0 + 3.0, 'fileRow']]);
+const CAPS = OS === 'iphone'
+  ? [[0, 1], [3.0, 2], [7.6, 3], [T0, 4], [T0 + 5.0, 0]]
+  : [[0, 1], [3.0, 2], [7.6, 3], [T0, 4], [T0 + 5.0, 0]];
+window.DURATION = T0 + 9.5;
+
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b) => cl((t - a) / (b - a));
+const io = x => (x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const out = x => 1 - Math.pow(1 - x, 3);
+const D = .38;
+
+function place(el, kind, k) {
+  const box = el.querySelector(':scope > .box'), dim = el.querySelector(':scope > .dim');
+  const target = box || el;
+  el.style.opacity = 1; el.style.transform = '';
+  if (box) { box.style.transform = ''; box.style.opacity = 1; }
+  if (dim) dim.style.opacity = k;
+  if (kind === 'push') el.style.transform = `translateX(${(1 - k) * 100}%)`;
+  else if (kind === 'up' || kind === 'rise') target.style.transform = `translateY(${(1 - k) * 110}%)`;
+  else if (kind === 'pop') { target.style.opacity = k; target.style.transform = `scale(${.9 + .1 * k})`; }
+  else if (kind === 'fade') el.style.opacity = k;
+}
+
+let infoScroll = null;
+window.renderAt = t => {
+  for (const [id, [a, kin, b = Infinity, kout = 'none']] of Object.entries(SHOW)) {
+    const el = $(id);
+    const end = kout === 'none' ? b : b + D;
+    if (t < a || t >= end) { el.style.display = 'none'; continue; }
+    el.style.display = 'block';
+    if (t >= b) place(el, kout, 1 - io(prog(t, b, b + D)));
+    else place(el, kin, kin === 'none' ? 1 : io(prog(t, a, a + D)));
+  }
+
+  // Défilement des infos du groupe jusqu'à « Exporter la discussion ».
+  if (OS === 'iphone') {
+    if (infoScroll === null && $('info').style.display === 'block') infoScroll = $('exportRow').offsetTop - 640;
+    $('infoBody').style.transform = `translateY(${-io(prog(t, 3.3, 4.6)) * (infoScroll || 0)}px)`;
+  }
+  $('progBar').style.width = `${io(prog(t, T0 + 3.7, T0 + 4.8)) * 100}%`;
+  [...$('players').children].forEach((p, i) => {
+    const k = out(prog(t, T0 + 5.8 + i * .55, T0 + 6.2 + i * .55));
+    p.style.opacity = i === 0 ? 1 : k;
+    p.style.transform = i === 0 ? '' : `translateY(${(1 - k) * 30}px)`;
+  });
+
+  // Le doigt : arrive, appuie, repart.
+  const finger = $('finger'), ripple = $('ripple');
+  finger.style.display = ripple.style.display = 'none';
+  const screen = $('screen').getBoundingClientRect();
+  for (const [at, id] of TAPS) {
+    const el = $(id);
+    el.classList.toggle('press', t >= at - .05 && t < at + .3);
+    if (t < at - .55 || t > at + .45) continue;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2 - screen.left, y = r.top + r.height / 2 - screen.top;
+    const come = out(prog(t, at - .55, at - .15)), leave = prog(t, at + .15, at + .45);
+    finger.style.display = 'block';
+    finger.style.left = `${x + (1 - come) * 140}px`;
+    finger.style.top = `${y + (1 - come) * 200 + leave * 160}px`;
+    finger.style.opacity = Math.min(come, 1 - leave);
+    finger.style.transform = `scale(${t >= at - .05 && t < at + .15 ? .82 : 1})`;
+    if (t >= at && t < at + .45) {
+      const k = prog(t, at, at + .45);
+      ripple.style.display = 'block';
+      ripple.style.left = `${x}px`; ripple.style.top = `${y}px`;
+      ripple.style.transform = `scale(${1 + k * 1.4})`;
+      ripple.style.opacity = 1 - k;
+    }
+  }
+
+  // Légende de l'étape en cours.
+  let i = CAPS.length - 1;
+  while (i > 0 && CAPS[i][0] > t) i--;
+  const [at, n] = CAPS[i], next = CAPS[i + 1]?.[0] ?? Infinity;
+  const k = Math.min(out(prog(t, at, at + .4)), 1 - prog(t, next - .25, next));
+  $('capNum').textContent = n || '✓';
+  $('capNum').style.background = n ? 'var(--accent)' : 'var(--good)';
+  $('capText').innerHTML = n ? L.caps[OS][n - 1] : L.caps.end;
+  $('cap').style.opacity = k;
+  $('cap').style.transform = `translateY(${(1 - k) * 24}px)`;
+  [...$('dots').children].forEach((d, j) => d.classList.toggle('on', n ? j === n - 1 : true));
+};
+
+renderAt(0);
+if (q.has('play')) {
+  const start = performance.now();
+  const loop = () => { renderAt(((performance.now() - start) / 1000) % window.DURATION); requestAnimationFrame(loop); };
+  document.fonts.ready.then(loop);
+}
+</script>
+</body>
+</html>

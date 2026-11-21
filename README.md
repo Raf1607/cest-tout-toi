@@ -54,6 +54,7 @@ node tools/check.mjs "chemin/vers/Discussion WhatsApp avec ….txt"  # tics trou
 node tools/make-sample.mjs                                     # régénère samples/
 node tools/make-og.mjs                                         # régénère l'image de partage et l'icône
 npm install && node tools/video/render.mjs                     # vidéo de présentation 9:16 dans promo/ (non versionnée)
+node tools/video/render-howto.mjs                                # tutoriels « Comment ça marche ? » iPhone et Android, FR et EN, dans video/
 ```
 
 ## Fichiers
@@ -65,6 +66,7 @@ npm install && node tools/video/render.mjs                     # vidéo de prés
 | `CNAME` | domaine du site (whoisbro.lol), lu par GitHub Pages |
 | `qui-sommes-nous.html`, `about.html`, `raph.jpg` | page « Qui sommes-nous ? » en français et en anglais (photo sans métadonnées GPS) |
 | `video/who-is-bro.mp4`, `video/who-is-bro-en.mp4` | vidéo de présentation en français et en anglais, liée en bas de l'accueil (copies de `promo/`, après `node tools/video/render.mjs [--lang en]`) |
+| `video/howto-{iphone,android}-{fr,en}.mp4` | tutoriels animés (exporter de WhatsApp puis importer), muets, en boucle dans l'écran « Comment ça marche ? » ; source `tools/video/howto.html` |
 | `privacy.html` | page « protection des données » en anglais |
 | `confidentialite.html` | page « protection des données », liée depuis l'accueil |
 | `js/i18n.js` | textes en français et en anglais |

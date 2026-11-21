@@ -447,6 +447,7 @@ function render() {
   if (ui.screen === 'home') html = homeScreen();
   else if (ui.screen === 'scan') html = scanScreen();
   else if (ui.screen === 'privacy') html = privacyScreen();
+  else if (ui.screen === 'howto') html = howtoScreen();
   else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
@@ -482,6 +483,9 @@ const ICONS = {
   imageOff: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21M2 2l20 20"/>',
 };
 
+// Réassurance sur les données, sur l'accueil et à l'arrivée d'un invité : mène à l'explication.
+const privacyBadge = () => `<button class="privacy-badge" data-act="privacy">${icon(ICONS.lock)}<span><b>${T('noData')}</b><small>${T('noDataSub')} <u>${T('privacyHow')}</u></small></span></button>`;
+
 // Logo en haut des écrans : un toucher ramène à l'accueil (en partie, après confirmation).
 const homeLogo = () => `<button class="home-logo" data-act="home" aria-label="${T('home')}">Who is <span>bro</span>&nbsp;?</button>`;
 
@@ -498,14 +502,12 @@ function homeScreen() {
     <section class="host">
       <label class="button primary big file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
       <p class="hint">${T('importHint')}</p>
-      <button class="privacy-badge" data-act="privacy">${icon(ICONS.lock)}<span>${T('privacyBadge')}<u>${T('privacyHow')}</u></span></button>
-      <details>
-        <summary>${T('howExport')}</summary>
-        <p>${T('exportIphone')}</p>
-        <p>${T('exportAndroid')}</p>
-        <p>${T('exportMedia')}</p>
-        <p>${T('exportNoMedia')}</p>
-      </details>
+      <p class="how-label">${T('howItWorks')}</p>
+      <div class="how-buttons">
+        <button data-act="howto" data-os="iphone">${icon(ICONS.phone)}iPhone</button>
+        <button data-act="howto" data-os="android">${icon(ICONS.phone)}Android</button>
+      </div>
+      ${privacyBadge()}
       <button class="link" data-act="demo">${T('demo')}</button>
     </section>
     <section class="friend">
@@ -532,8 +534,22 @@ function joinScreen() {
         <button class="primary" type="submit">${T('join')}</button>
       </form>
     </section>
-    <button class="privacy-badge" data-act="privacy">${icon(ICONS.lock)}<span>${T('privacyBadge')}<u>${T('privacyHow')}</u></span></button>
+    ${privacyBadge()}
     <button class="link" data-act="cancel-join">${T('cancel')}</button>`;
+}
+
+// « Comment ça marche ? » : la vidéo de l'export puis de l'import, et les étapes écrites.
+function howtoScreen() {
+  const os = ui.howto === 'android' ? 'android' : 'iphone';
+  return `
+    <div class="sheet-top"><button class="back" data-act="howto-close" aria-label="${T('cancel')}">${icon(ICONS.back)}</button><h1>${T('howtoTitle', os === 'iphone' ? 'iPhone' : 'Android')}</h1></div>
+    <video class="howto-video" src="video/howto-${os}-${lang}.mp4" autoplay muted loop playsinline disablepictureinpicture aria-label="${T('howtoVideo')}"></video>
+    <ol class="howto-steps">${T('howtoSteps')[os].map(step => `<li>${step}</li>`).join('')}</ol>
+    <p class="howto-tip">${T('exportMedia')}</p>
+    <div class="actions">
+      <label class="button primary big file">${T('import')}<input type="file" accept=".txt,.zip,text/plain,application/zip" data-input="file"></label>
+      <button class="link" data-act="howto-close">${T('goBack')}</button>
+    </div>`;
 }
 
 // « Comment ? » : l'essentiel sur les données en quatre points, le détail sur la page dédiée.
@@ -994,6 +1010,8 @@ $app.addEventListener('click', async e => {
   else if (act === 'scan') startScan();
   else if (act === 'privacy') { setUi({ screen: 'privacy' }); scrollTo(0, 0); }
   else if (act === 'privacy-close') { setUi({ screen: 'home' }); scrollTo(0, 0); }
+  else if (act === 'howto') { setUi({ screen: 'howto', howto: el.dataset.os }); scrollTo(0, 0); }
+  else if (act === 'howto-close') { setUi({ screen: 'home' }); scrollTo(0, 0); }
   else if (act === 'cancel-join') { forgetCode(); setUi({ screen: 'home', error: '', notice: '' }); }
   else if (act === 'home') {
     if (!game && !client && ui.screen !== 'game') return setUi({ screen: 'home', error: '', notice: '' });
