@@ -126,7 +126,7 @@ function qrSvg(text) {
   q.make();
   return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
 }
-const nameOf = p => p.author || p.name || T('newPlayer');
+const nameOf = p => p.author || p.name || (p.host ? T('hostName') : T('newPlayer'));   // l'hôte n'a pas tapé de prénom
 
 // Stickers, GIF et photos à montrer : id (nom du fichier dans l'export) → adresse locale de l'image.
 const mediaCache = new Map();
@@ -538,7 +538,7 @@ function playerList(v) {
     <li class="${p.connected ? '' : 'off'}">
       <span class="name">${esc(nameOf(p))}${p.id === v.me ? ` <small>${T('you')}</small>` : ''}</span>
       ${p.outside ? `<small class="tag">${T('outsideTag')}</small>` : ''}
-      ${p.host ? `<small class="tag">${T('hostTag')}</small>` : ''}
+      ${p.host && (p.author || p.name) ? `<small class="tag">${T('hostTag')}</small>` : ''}
       ${p.connected ? '' : `<small class="tag">${T('offTag')}</small>`}
     </li>`).join('')}</ul>`;
 }

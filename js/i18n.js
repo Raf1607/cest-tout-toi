@@ -88,6 +88,7 @@ const FR = {
   someone: "Quelqu'un",
   // Salle d'attente
   newPlayer: 'Nouveau joueur',
+  hostName: 'Hôte',
   you: '(toi)',
   youShort: 'Toi',
   hostTag: 'hôte',
@@ -291,6 +292,7 @@ const EN = {
   lost: 'Connection lost, reconnecting…',
   someone: 'Someone',
   newPlayer: 'New player',
+  hostName: 'Host',
   you: '(you)',
   youShort: 'You',
   hostTag: 'host',
