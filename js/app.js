@@ -977,7 +977,7 @@ $app.addEventListener('click', async e => {
   }
   else if (act === 'share') {
     // Invitation à distance : le partage du téléphone (WhatsApp, SMS…) avec un message tout prêt.
-    const text = T('inviteText'), url = inviteUrl(view.code);
+    const text = T('inviteText', view.title), url = inviteUrl(view.code);
     try {
       if (navigator.share) await navigator.share({ title: 'Who is bro ?', text, url });
       else { await navigator.clipboard.writeText(`${text} ${url}`); el.textContent = T('linkCopied'); }
