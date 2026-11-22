@@ -372,7 +372,9 @@ export class Game {
       const name = String(msg.name || '').trim().slice(0, 24);
       if (name) Object.assign(p, { author: null, outside: true, name });
     } else if (msg.t === 'vote' && this.phase === 'question' && msg.n === this.round.n
-               && (this.round.options || this.options).includes(msg.author)) {      // on peut changer d'avis jusqu'à la fin
+               && (this.round.options || this.options).includes(msg.author)
+               && !(this.round.effects?.flou === id && !Object.keys(this.round.votes).length)) {   // question floue : pas avant le premier vote des autres
+      // on peut changer d'avis jusqu'à la fin
       this.round.votes[id] = msg.author;
       (this.round.at ??= {})[id] = Date.now();   // l'heure du dernier vote, pour la course au ×2
       this.checkVotes();

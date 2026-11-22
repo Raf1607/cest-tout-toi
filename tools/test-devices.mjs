@@ -203,7 +203,7 @@ async function play(sc) {
         if (s === 'question') {
           const n = await p.page.evaluate(() => document.querySelector('.hud span')?.textContent || '');
           await snap(p, 'question', sc.name);
-          const options = p.page.locator('.options button:not(.on)');
+          const options = p.page.locator('.options button:not(.on):not([disabled])');
           const voted = await p.page.locator('.options button.on').count();
           if (!voted && await options.count()) {
             await options.nth(Math.floor(Math.random() * await options.count())).click().catch(() => {});

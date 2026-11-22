@@ -730,7 +730,10 @@ function questionScreen() {
 // Mon vote, et combien de joueurs ont déjà voté (pas qui, ni pour qui).
 function patchQuestion() {
   const v = view, r = v.round;
-  for (const btn of $app.querySelectorAll('[data-act=vote]')) btn.classList.toggle('on', r.myVote === btn.dataset.author);
+  for (const btn of $app.querySelectorAll('[data-act=vote]')) {
+    btn.classList.toggle('on', r.myVote === btn.dataset.author);
+    btn.disabled = !!r.blurred;   // question floue : on vote seulement quand elle se défloute
+  }
   $app.querySelector('.bubble').classList.toggle('blurred', !!r.blurred);
   const present = v.players.filter(p => p.connected);
   const voted = present.filter(p => p.voted).length;

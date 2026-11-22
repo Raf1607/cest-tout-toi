@@ -242,8 +242,12 @@ assert.equal(media.phase, 'end');
   assert.equal(g.wheel.target, 'h');
   answer = nextRound(g);
   assert.ok(g.view('h').round.blurred && g.view('h').round.flou && !g.view('b').round.blurred, 'seul le premier a la question floue');
+  g.handle('h', { t: 'vote', n: g.round.n, author: answer });
+  assert.ok(!g.round.votes.h && g.view('h').round.blurred, 'le premier ne peut pas voter tant que la question est floue');
   g.handle('b', { t: 'vote', n: g.round.n, author: answer });
   assert.ok(!g.view('h').round.blurred, 'nette dès le premier vote');
+  g.handle('h', { t: 'vote', n: g.round.n, author: answer });
+  assert.equal(g.round.votes.h, answer, 'puis il vote normalement');
   clearTimeout(g.timer);
 
   // Question bonus : une manche de plus, une seule fois par partie.
