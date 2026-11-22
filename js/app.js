@@ -436,7 +436,7 @@ function render() {
   else if (ui.screen === 'howto') html = howtoScreen();
   else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else if (patron) html = patronScreen();
-  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, soundson: soundsOnScreen, montage: montageScreen, end: endScreen, patron: endScreen }[view.phase]();
+  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, soundson: soundsOnScreen, montage: montageScreen, encore: encoreScreen, end: endScreen, patron: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
   // Un champ du salon en cours de saisie (recherche, prénom) garde le curseur quand l'écran se redessine.
   const typing = document.activeElement?.dataset?.input;
@@ -896,6 +896,41 @@ function runSoundsOn() {
   }
 }
 
+// « Encore ? » après le montage. Les joueurs disent ce qu'ils veulent ; l'hôte voit leurs envies et décide
+// (revoir le diapo et sa musique pour tout le monde, une seule fois, ou passer aux résultats).
+function encoreScreen() {
+  const e = view.encore;
+  const names = list => list.length ? `<small>${list.map(esc).join(', ')}</small>` : '';
+  if (view.host) {
+    const votes = e.replay.length + e.results.length;
+    return `
+      ${homeLogo()}
+      <div class="encore">
+        <div class="big-emoji">🔁</div>
+        <h1>${T('encoreTitle')}</h1>
+        <p class="pitch">${e.others ? T('encoreHostHint') : T('encoreAlone')}</p>
+        ${e.others ? `
+        <div class="encore-votes">
+          <div class="encore-vote${e.replay.length > e.results.length ? ' lead' : ''}"><span>${T('encoreReplay')}</span><b>${e.replay.length}</b>${names(e.replay)}</div>
+          <div class="encore-vote${e.results.length > e.replay.length ? ' lead' : ''}"><span>${T('encoreResults')}</span><b>${e.results.length}</b>${names(e.results)}</div>
+          ${votes < e.others ? `<p class="hint">${T('encoreWaiting', e.others - votes)}</p>` : ''}
+        </div>` : ''}
+        <button class="primary big" data-act="encore" data-choice="replay">${T('encoreReplayHost')}</button>
+        <button class="big" data-act="encore" data-choice="results">${T('encoreResults')}</button>
+      </div>`;
+  }
+  return `
+    ${homeLogo()}
+    <div class="encore">
+      <div class="big-emoji">🔁</div>
+      <h1>${T('encoreTitle')}</h1>
+      <p class="pitch">${T('encoreGuestHint')}</p>
+      <button class="big encore-pick ${e.mine === 'replay' ? 'on' : ''}" data-act="encore-vote" data-want="replay">${T('encoreReplay')}</button>
+      <button class="big encore-pick ${e.mine === 'results' ? 'on' : ''}" data-act="encore-vote" data-want="results">${T('encoreResults')}</button>
+      <p class="hint">${e.mine ? T('encoreSent') : T('encoreHostDecides')}</p>
+    </div>`;
+}
+
 // Montage façon edit, calé sur la musique (spec : la meilleure photo tombe pile sur le drop).
 //   courte : drop des mesures 4 à 9, une photo par temps (la meilleure d'abord), un sticker tous les 4 temps ;
 //   longue : groove (mesures 4 à 7) avec les photos les moins bien classées, une tous les 2 temps, et les
@@ -994,6 +1029,9 @@ function animateBoard() {
     }
   });
   later(1850, () => {                         // le premier brille, et les confettis partent de sa ligne
+    // Égalité en tête : personne ne brille, pas de confettis.
+    const top = Math.max(...rows.map(li => +li.querySelector('b').dataset.to));
+    if (rows.filter(li => +li.querySelector('b').dataset.to === top).length > 1) return;
     rows.find(li => li.dataset.now === '0')?.classList.add('lead');
     const colors = ['#ffcf3f', '#52d18f', '#ff7a6b', '#7fb4ff', '#f5f1e8'];
     for (let i = 0; i < 26; i++) {
@@ -1306,6 +1344,8 @@ $app.addEventListener('click', async e => {
     send({ t: act });
     if (act === 'start' && game?.phase === 'question') countGame();
   }
+  else if (act === 'encore') send({ t: 'encore', choice: el.dataset.choice });
+  else if (act === 'encore-vote') send({ t: 'encore-vote', want: el.dataset.want });
   else if (act === 'enable-sound') {
     unlockAudio();
     // Le contexte audio démarre de façon asynchrone : on rejoint la musique en cours dès qu'il tourne.

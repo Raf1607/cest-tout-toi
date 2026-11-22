@@ -203,6 +203,16 @@ async function play(sc) {
           }
           if (p === host) lastRound = parseInt(n.match(/\d+/)?.[0] || lastRound, 10);
           if (p.seen.has('question') && await p.page.locator('.bubble img, .bubble video').count()) await snap(p, 'question-media', sc.name);
+        } else if (s === 'encore') {
+          await snap(p, 'encore', sc.name);
+          // Les invités votent ; l'hôte relance le diapo une fois (premier scénario), puis passe aux résultats.
+          if (p !== host) await p.page.click('[data-act="encore-vote"][data-want="replay"]').catch(() => {});
+          else {
+            const replay = sc.support && !p.replayed;
+            p.replayed = true;
+            await sleep(800);
+            await p.page.click(`[data-act="encore"][data-choice="${replay ? 'replay' : 'results'}"]`).catch(() => {});
+          }
         } else if (s === 'patron') {
           await supportStep(p, sc);
         } else if (s && s !== 'lobby') await snap(p, s, sc.name);

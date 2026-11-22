@@ -619,4 +619,35 @@ assert.equal(media.phase, 'end');
   assert.equal(end.patron.patronId, 'b');
 }
 
+// « Encore ? » après le montage : les joueurs votent, l'hôte décide ; le diapo ne se rejoue qu'une fois.
+{
+  const g = new Game(media.analysis, 'BISS', 'h', () => {});
+  ['b', 'c'].forEach(id => g.join(id));
+  g.players.get('h').author = 'Julie Moreau'; g.players.get('b').author = 'Inès'; g.players.get('c').author = 'Karim B';
+  g.phase = 'ranking'; g.deck = [{}]; g.index = 0;
+  g.advance(); g.toMontage(); clearTimeout(g.timer);
+  g.afterMontage(); clearTimeout(g.timer);
+  assert.equal(g.phase, 'encore', 'après le montage : « Encore ? »');
+  g.handle('b', { t: 'encore-vote', want: 'replay' });
+  g.handle('c', { t: 'encore-vote', want: 'results' });
+  g.handle('c', { t: 'encore-vote', want: 'replay' });          // il change d'avis
+  g.handle('b', { t: 'encore', choice: 'results' });            // seul l'hôte décide
+  assert.equal(g.phase, 'encore');
+  const hv = g.view('h').encore;
+  assert.deepEqual([hv.replay.sort(), hv.results, hv.others], [['Inès', 'Karim B'], [], 2], 'l\'hôte voit ce que veulent les autres');
+  assert.equal(g.view('b').encore.mine, 'replay');
+  const before = g.music.startAt;
+  g.handle('h', { t: 'encore', choice: 'replay' }); clearTimeout(g.timer);
+  assert.equal(g.phase, 'montage', 'le diapo repart pour tout le monde');
+  assert.ok(g.music.startAt !== before && g.view('b').music.startAt === g.music.startAt, 'nouvelle heure de départ de la musique');
+  assert.ok(Math.abs(g.music.startAt + 3 * BAR * 1000 - performance.now() - 1500) < 50, 'directement au montage, sans « Sounds on »');
+  g.afterMontage(); clearTimeout(g.timer);
+  assert.equal(g.phase, 'end', 'une seule fois : ensuite, les résultats');
+  const h = new Game(media.analysis, 'BIS2', 'h', () => {});
+  h.join('b'); h.players.get('h').author = 'Julie Moreau'; h.players.get('b').author = 'Inès';
+  h.phase = 'ranking'; h.deck = [{}]; h.index = 0; h.advance(); h.toMontage(); h.afterMontage(); clearTimeout(h.timer);
+  h.handle('h', { t: 'encore', choice: 'results' });
+  assert.equal(h.phase, 'end', 'l\'hôte peut passer directement aux résultats');
+}
+
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

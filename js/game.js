@@ -59,6 +59,7 @@ const bestBadge = (a, b) => ((BADGE_RANK[b] || 0) > (BADGE_RANK[a] || 0) ? b : a
 // les téléphones : l'hôte fixe l'heure de départ (son horloge, performance.now()) un peu à l'avance.
 const MONTAGE_MIN_ITEMS = 3;
 export const MUSIC_LEAD = 1500;               // ms entre l'annonce et le départ de la musique
+export const ENCORE_MAX_MS = 45000;           // « Encore ? » : sans décision de l'hôte, on passe aux résultats
 const hostNow = () => performance.now();
 // Répartition des 6 pistes entre les téléphones connectés (hôte d'abord, puis ordre d'arrivée).
 // Au-delà de 6, les suivants doublent la mélodie, les percus, les accords, la mélodie…
@@ -295,6 +296,7 @@ export class Game {
     this.patron = null;               // phase « patron » : roue du mécène et paiements
     this.patronDone = false;          // déjà proposé dans ce salon : pas deux fois (« Rejouer » le même soir)
     this.music = null;                // musique de fin : version, heure de départ, pistes de chacun
+    this.encore = null;               // « Encore ? » après le montage : ce que veut chaque joueur
     this.syncQuality = {};            // id → { rtt, jitter } : qualité du calage d'horloge de chaque invité
     this.join(hostId);
     this.onChange = onChange;
@@ -393,6 +395,10 @@ export class Game {
       return;
     } else if (msg.t === 'skip' && host && (this.phase === 'montage' || this.phase === 'soundson')) {
       return this.wrapUp();
+    } else if (msg.t === 'encore-vote' && this.phase === 'encore' && !host && (msg.want === 'replay' || msg.want === 'results')) {
+      this.encore.wants[id] = msg.want;
+    } else if (msg.t === 'encore' && host && this.phase === 'encore') {
+      return msg.choice === 'replay' && !this.music.replayed ? this.replayMontage() : this.wrapUp();
     } else if (msg.t === 'skip' && host && this.phase === 'patron') {
       return this.finish();
     } else if (msg.t === 'paid' && this.patron && (this.phase === 'patron' || this.phase === 'end') && badgeOf(msg.badge)) {
@@ -568,7 +574,32 @@ export class Game {
     this.phase = 'montage';
     const { startAt, bars } = this.music;
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.wrapUp(), startAt + (bars * BAR + TAIL) * 1000 - hostNow());
+    this.timer = setTimeout(() => this.afterMontage(), startAt + (bars * BAR + TAIL) * 1000 - hostNow());
+    this.changed();
+  }
+
+  // Après le montage : « Encore ? ». Les joueurs disent s'ils veulent revoir le diapo ou passer aux résultats ;
+  // l'hôte voit leurs envies et décide. Le diapo (et sa musique) ne se rejoue qu'une fois.
+  afterMontage() {
+    if (this.phase !== 'montage') return;
+    if (this.music.replayed) return this.wrapUp();
+    clearTimeout(this.timer);
+    this.phase = 'encore';
+    this.encore = { wants: {} };
+    this.timer = setTimeout(() => this.wrapUp(), ENCORE_MAX_MS);
+    this.changed();
+  }
+
+  // On rejoue le montage pour tout le monde, directement à la mesure 4 (sans repasser par « Sounds on ») :
+  // la musique repart au même instant sur tous les téléphones.
+  replayMontage() {
+    clearTimeout(this.timer);
+    this.music.replayed = true;
+    this.music.startAt = hostNow() + MUSIC_LEAD - PREP_BARS * BAR * 1000;
+    this.phase = 'montage';
+    this.encore = null;
+    const { startAt, bars } = this.music;
+    this.timer = setTimeout(() => this.afterMontage(), startAt + (bars * BAR + TAIL) * 1000 - hostNow());
     this.changed();
   }
 
@@ -700,9 +731,9 @@ export class Game {
   // Instantané de la partie (données simples), gardé sur le téléphone de l'hôte pour reprendre après
   // un rechargement de la page.
   snapshot() {
-    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone, music } = this;
+    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone, music, encore } = this;
     return {
-      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone, music,
+      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone, music, encore,
       used: [...this.used], shields: [...this.shields], allowed: [...this.allowed], refused: [...this.refused],
       players: [...this.players.values()],
     };
@@ -712,7 +743,7 @@ export class Game {
   // acceptés, ils rentrent directement), et les minuteurs repartent en leur laissant le temps.
   static restore(analysis, snap) {
     const g = new Game(analysis, snap.code, snap.hostId, null);
-    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking', 'spare', 'patron', 'music']) g[k] = snap[k];
+    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking', 'spare', 'patron', 'music', 'encore']) g[k] = snap[k];
     g.patronDone = !!snap.patronDone;
     if (g.round) g.round.card = g.deck[g.index] || g.round.card;
     g.used = new Set(snap.used);
@@ -727,6 +758,7 @@ export class Game {
     } else if (g.phase === 'ranking' || g.phase === 'wheel') g.timer = setTimeout(() => g.advance(), 2000);
     // L'heure de l'hôte repart de zéro avec la page : la musique ne peut pas reprendre, on passe à la suite.
     else if (g.phase === 'montage' || g.phase === 'soundson') g.timer = setTimeout(() => g.wrapUp(), 2000);
+    else if (g.phase === 'encore') g.timer = setTimeout(() => g.wrapUp(), ENCORE_MAX_MS);
     else if (g.phase === 'patron' && g.patron?.step === 'spin') g.timer = setTimeout(() => g.verdict(), 2000);
     else if (g.phase === 'patron') g.timer = setTimeout(() => g.finish(), PATRON_MAX_MS);
     return g;
@@ -805,6 +837,12 @@ export class Game {
         paid: P.paid.map(x => ({ name: nameOf(x.id), badge: x.badge, role: P.champions.includes(x.id) ? 'champion' : x.id === P.patronId ? 'patron' : 'free' })),
         cheer: id === P.patronId ? P.cheer : null,
       };
+    }
+    if (this.phase === 'encore') {
+      const name = pid => { const q = this.players.get(pid); return q?.author || q?.name || ''; };
+      const who = want => Object.entries(this.encore.wants).filter(([pid, w]) => w === want && this.players.get(pid)?.connected).map(([pid]) => name(pid));
+      v.encore = { mine: this.encore.wants[id] || null, replay: who('replay'), results: who('results'),
+        others: [...this.players.values()].filter(p => p.connected && p.id !== this.hostId).length };
     }
     // L'écran de fin se prépare dès la roue du mécène : chacun y passe quand il veut.
     if (this.phase === 'end' || this.phase === 'patron') {
