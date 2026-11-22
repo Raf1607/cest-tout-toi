@@ -482,6 +482,27 @@
   .encore-vote small { grid-column: 1 / -1; color: var(--muted); font-weight: 500; }
   .encore-vote.lead { border-color: var(--accent); background: rgba(255, 207, 63, .1); }
   .encore-pick.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  /* Égalité au sommet : « Tu as gagné ! » puis le message s'altère (1,2 s), la suite arrive ensuite */
+  .big-emoji.swap { position: relative; width: 1.2em; height: 1em; }
+  .big-emoji.swap span { position: absolute; inset: 0; display: grid; place-items: center; }
+  .big-emoji.swap .before { animation: swapOut .35s ease-in 1.2s forwards; }
+  .big-emoji.swap .after { opacity: 0; transform: scale(.3); animation: swapIn .55s cubic-bezier(.2, 1.6, .4, 1) 1.35s forwards; }
+  @keyframes swapOut { to { opacity: 0; transform: scale(.3) rotate(-25deg); } }
+  @keyframes swapIn { to { opacity: 1; transform: none; } }
+  .altered .won { display: inline; animation: strike .3s ease-out 1.2s forwards; text-decoration-thickness: 3px; text-decoration-color: var(--accent); }
+  .altered .but { display: block; color: var(--accent); opacity: 0; animation: butIn .5s cubic-bezier(.2, 1.6, .4, 1) 1.4s forwards; }
+  @keyframes strike { to { text-decoration-line: line-through; opacity: .55; } }
+  .altered.soft .won { animation: dim .3s ease-out 1.2s forwards; }
+  @keyframes dim { to { opacity: .7; } }
+  @keyframes butIn { from { opacity: 0; transform: translateY(8px) scale(.9); } to { opacity: 1; transform: none; } }
+  .late { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: 0; animation: lateIn .5s ease-out 2s forwards; }
+  @keyframes lateIn { to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .big-emoji.swap .before { display: none; } .big-emoji.swap .after, .altered .but, .late { opacity: 1; transform: none; animation: none; }
+    .altered .won { animation: none; text-decoration-line: line-through; opacity: .55; }
+    .altered.soft .won { text-decoration-line: none; opacity: .7; }
+  }
 </style>
 </head>
 <body>
@@ -495,22 +516,22 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611220244",
-  "./js/tics.js": "./js/tics.js?v=202611220244",
-  "./js/game.js": "./js/game.js?v=202611220244",
-  "./js/net.js": "./js/net.js?v=202611220244",
-  "./js/media.js": "./js/media.js?v=202611220244",
-  "./js/records.js": "./js/records.js?v=202611220244",
-  "./js/i18n.js": "./js/i18n.js?v=202611220244",
-  "./js/resume.js": "./js/resume.js?v=202611220244",
-  "./js/music.js": "./js/music.js?v=202611220244",
-  "./js/clock.js": "./js/clock.js?v=202611220244",
-  "./js/tuning.js": "./js/tuning.js?v=202611220244",
-  "./js/scoring.js": "./js/scoring.js?v=202611220244",
-  "./js/support.js": "./js/support.js?v=202611220244",
-  "./js/pay.js": "./js/pay.js?v=202611220244"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611220305",
+  "./js/tics.js": "./js/tics.js?v=202611220305",
+  "./js/game.js": "./js/game.js?v=202611220305",
+  "./js/net.js": "./js/net.js?v=202611220305",
+  "./js/media.js": "./js/media.js?v=202611220305",
+  "./js/records.js": "./js/records.js?v=202611220305",
+  "./js/i18n.js": "./js/i18n.js?v=202611220305",
+  "./js/resume.js": "./js/resume.js?v=202611220305",
+  "./js/music.js": "./js/music.js?v=202611220305",
+  "./js/clock.js": "./js/clock.js?v=202611220305",
+  "./js/tuning.js": "./js/tuning.js?v=202611220305",
+  "./js/scoring.js": "./js/scoring.js?v=202611220305",
+  "./js/support.js": "./js/support.js?v=202611220305",
+  "./js/pay.js": "./js/pay.js?v=202611220305"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611220244"></script>
+<script type="module" src="js/app.js?v=202611220305"></script>
 </body>
 </html>

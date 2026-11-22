@@ -47,7 +47,10 @@ const chance = p => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 < p;
 export const PATRON_SPIN_MS = 4500;
 export const PATRON_MAX_MS = 60000;
 export const PATRON_MIN_PLAYERS = 2;
-export const AMOUNTS = { patron: 100, champion: 200, free: 100 };   // centimes
+// Montants proposés (centimes). Égalité au sommet : celui que la roue désigne parmi les ex æquo a gagné… mais
+// régale, et deux fois plus cher ; les autres ex æquo ont « un peu gagné quand même » (1 €). Les joueurs qui
+// ne sont pas en tête ne paient jamais.
+export const AMOUNTS = { patron: 100, champion: 200, tiePatron: 200, tieMate: 100, free: null };
 const CHEER_EVERY = 5000;                                       // un encouragement par joueur toutes les 5 s
 const BADGE_RANK = { crown: 1, diamond: 2 };
 export const badgeOf = b => (BADGE_RANK[b] ? b : null);
@@ -834,12 +837,14 @@ export class Game {
     }
     if (this.phase === 'patron') {
       const P = this.patron, nameOf = pid => { const q = this.players.get(pid); return q?.author || q?.name || ''; };
-      const role = P.champions.includes(id) ? 'champion' : id === P.patronId ? 'patron' : 'free';
+      const roleOf = pid => (P.tie ? (pid === P.patronId ? 'tiePatron' : P.champions.includes(pid) ? 'tieMate' : 'free')
+        : P.champions.includes(pid) ? 'champion' : pid === P.patronId ? 'patron' : 'free');
+      const role = roleOf(id);
       v.patron = {
         step: P.step, names: P.names, stopIndex: P.stopIndex, angle: P.angle, tie: !!P.tie,
         patron: P.patronId ? nameOf(P.patronId) : null, champions: P.champions.map(nameOf),
         role, amount: AMOUNTS[role],
-        paid: P.paid.map(x => ({ name: nameOf(x.id), badge: x.badge, role: P.champions.includes(x.id) ? 'champion' : x.id === P.patronId ? 'patron' : 'free' })),
+        paid: P.paid.map(x => ({ name: nameOf(x.id), badge: x.badge, role: roleOf(x.id) })),
         cheer: id === P.patronId ? P.cheer : null,
       };
     }

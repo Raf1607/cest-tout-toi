@@ -115,16 +115,23 @@ async function snap(p, tag, scenario) {
 // (succès : merci puis « Continuer » ; échec : message puis « Plus tard » ; annulation : « Plus tard »).
 async function supportStep(p, sc) {
   const pg = p.page;
-  const emoji = await pg.evaluate(() => document.querySelector('.big-emoji')?.textContent || '');
-  if (!emoji) return;                                 // la roue tourne encore
+  const role = await pg.evaluate(() => document.querySelector('.patron.verdict')?.dataset.role || '');
+  if (!role) return;                                  // la roue tourne encore
   if (p.supportDone) return;
   p.supportDone = true;
-  const role = { '🫵': 'désigné', '🏆': 'champion', '😮‍💨': 'libre' }[emoji];
-  if (!role) return report(p.who, `rôle inconnu à l'écran de soutien (« ${emoji} »)`);
-  p.role = role;
-  await snap(p, `soutien-${role}`, sc.name);
+  p.role = { patron: 'désigné', champion: 'champion', free: 'libre', tiePatron: 'départagé', tieMate: 'ex-æquo' }[role];
+  if (!p.role) return report(p.who, `rôle inconnu à l'écran de soutien (« ${role} »)`);
+  await sleep(2400);                                  // égalité : le message s'altère, puis la suite apparaît
+  await snap(p, `soutien-${p.role}`, sc.name);
   const mode = await pg.evaluate(() => localStorage.getItem('fake-stripe'));
-  if (role === 'libre') await pg.click('[data-act="pay-anyway"]');
+  p.mode = mode;
+  if (role === 'free') {
+    // Ceux qui ne sont pas en tête ne paient jamais : pas de bouton de paiement.
+    if (await pg.locator('[data-pay], .fake-wallet').count()) report(p.who, 'un joueur libre peut payer');
+    await pg.click('[data-act="patron-later"]');
+    return pg.waitForFunction(() => document.querySelector('#app')?.dataset.screen === 'end', null, { timeout: 10000 })
+      .catch(() => report(p.who, 'pas d\'écran de fin après le soutien'));
+  }
   await pg.waitForSelector('.fake-wallet', { timeout: 15000 }).catch(() => report(p.who, 'pas de bouton de paiement'));
   await pg.click('.fake-wallet').catch(() => {});
   await sleep(1200);
@@ -249,7 +256,9 @@ async function play(sc) {
     }
     if (sc.support) {
       const payer = ps.find(p => p.badge);
-      if (!payer) report(sc.name, 'aucun badge enregistré après un paiement réussi');
+      const shouldPay = ps.some(p => p.mode === 'success' && p.role !== 'libre');
+      if (!payer && shouldPay) report(sc.name, 'aucun badge enregistré après un paiement réussi');
+      else if (!payer) { /* le seul joueur qui pouvait réussir un paiement n'était pas invité à payer */ }
       else for (const p of ps) if (!await p.page.locator('.ranking .badge-icon').count()) report(p.who, 'le badge du payeur n\'apparaît pas au classement final');
     }
     const [host2, ...guests2] = ps;

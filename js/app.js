@@ -399,7 +399,7 @@ function show(v) {
   const before = view;
   view = v;
   if (v.phase === 'patron') {
-    if (before?.phase !== 'patron' || !ui.patron) ui.patron = { dismissed: false, pay: 'idle', cheerSeen: v.patron.cheer?.seq || 0, showPay: false };
+    if (before?.phase !== 'patron' || !ui.patron) ui.patron = { dismissed: false, pay: 'idle', cheerSeen: v.patron.cheer?.seq || 0 };
     ui.patron.view = v.patron;
   }
   if (v.lang && v.lang !== lang) setLang(v.lang);   // la partie se joue dans la langue de l'hôte
@@ -415,7 +415,7 @@ function render() {
   // redessiner, pour qu'un toucher en cours ne soit pas perdu.
   const inGame = ui.screen === 'game';
   const patron = inGame && patronLocal();
-  const key = patron ? `patron/${ui.patron.view.step}/${ui.patron.pay === 'thanks' ? 'merci' : ui.patron.showPay ? 'payer' : 'verdict'}`
+  const key = patron ? `patron/${ui.patron.view.step}/${ui.patron.pay === 'thanks' ? 'merci' : 'verdict'}`
     : inGame && view.phase === 'question' ? `${view.round.n}/${ui.status}`
     : inGame && view.phase === 'ranking' ? `classement${view.ranking.n}`
     : inGame && view.phase === 'wheel' ? `roue${view.wheel.index}`
@@ -1134,13 +1134,37 @@ function patronScreen() {
         </div>
       </div>`;
   }
-  const named = P.patron ? `<p class="pill">${T(P.role === 'patron' ? (P.tie ? 'patronTieSpoke' : 'patronSpoke') : (P.tie ? 'patronTieNamed' : 'patronNamed'), esc(P.patron))}</p>` : '';
+  const named = P.patron ? `<p class="pill">${T(P.role === 'patron' ? 'patronSpoke' : P.role === 'tiePatron' ? 'patronTieSpoke' : P.tie ? 'patronTieNamed' : 'patronNamed', esc(P.patron))}</p>` : '';
   const pay = `<div class="pay" data-pay></div><p class="pay-error" data-pay-error hidden>${T('payFailed')}</p>`;
   const later = `<button class="link" data-act="patron-later">${T('later')}</button>`;
   const banners = '<div class="paid-banners" data-banners></div><div class="cheered" data-cheered hidden></div>';
+  // Égalité au sommet : d'abord « Tu as gagné ! » (🏆), puis le message s'altère. Le désigné : « Mais tu
+  // régales », deux fois plus cher. Les autres ex æquo : 🤷 « …mais t'as un peu gagné quand même », 1 €.
+  if (P.role === 'tiePatron') return `
+    ${banners}
+    <div class="patron verdict" data-role="tiePatron">
+      ${named}
+      <div class="big-emoji swap"><span class="before">🏆</span><span class="after">🫵</span></div>
+      <h1 class="altered"><span class="won">${T('tieWon', esc(myName()))}</span> <span class="but">${T('tieBut')}</span></h1>
+      <div class="late">
+        <p class="pitch">${T('tieDouble')}</p>
+        <div class="pulse">${pay}</div>${later}
+      </div>
+    </div>`;
+  if (P.role === 'tieMate') return `
+    ${banners}
+    <div class="patron verdict" data-role="tieMate">
+      ${named}
+      <div class="big-emoji swap"><span class="before">🏆</span><span class="after">🤷</span></div>
+      <h1 class="altered soft"><span class="won">${T('tieMateTitle', esc(myName()))}</span> <span class="but">${T('tieMateBut')}</span></h1>
+      <div class="late">
+        <p class="pitch">${T('pitch1')}</p>
+        ${pay}${later}
+      </div>
+    </div>`;
   if (P.role === 'patron') return `
     ${banners}
-    <div class="patron verdict">
+    <div class="patron verdict" data-role="patron">
       ${named}
       <div class="big-emoji">🫵</div>
       <h1>${T('patronTitle', esc(myName()))}</h1>
@@ -1149,7 +1173,7 @@ function patronScreen() {
     </div>`;
   if (P.role === 'champion') return `
     ${banners}
-    <div class="patron verdict">
+    <div class="patron verdict" data-role="champion">
       ${named}
       <div class="big-emoji">🏆</div>
       <h1>${T('champTitle', esc(myName()))}</h1>
@@ -1162,13 +1186,12 @@ function patronScreen() {
   const text = P.patron ? T('freeText', esc(P.patron), andList(champs), champs.length > 1) : T('freeTextChamps', andList(champs), champs.length > 1);
   return `
     ${banners}
-    <div class="patron verdict">
+    <div class="patron verdict" data-role="free">
       ${named}
       <div class="big-emoji">😮‍💨</div>
       <h1>${T('freeTitle')}</h1>
       <p class="pitch">${text}</p>
       ${P.patron ? `<button class="primary big" data-act="cheer">${T('cheer', esc(P.patron))}</button>` : ''}
-      ${ui.patron.showPay ? pay : `<button class="link" data-act="pay-anyway">${T('payAnyway')}</button>`}
       ${later}
     </div>`;
 }
@@ -1206,7 +1229,8 @@ function startPatron() {
   patchPatron();
   const slot = $app.querySelector('[data-pay]');
   if (!slot) return;
-  const role = P.role, badge = role === 'champion' ? 'diamond' : 'crown';
+  // 2 € : 💎 champion diamant ; 1 € : 👑 mécène.
+  const badge = P.amount >= 200 ? 'diamond' : 'crown';
   import('./pay.js').then(({ mountPay }) => mountPay(slot, {
     amount: P.amount, lang,
     labels: { card: T('payCard'), cardPay: T('payCardGo', (P.amount / 100).toLocaleString(lang)), close: T('later') },
@@ -1367,7 +1391,6 @@ $app.addEventListener('click', async e => {
     el.disabled = true;                 // un encouragement toutes les 5 secondes
     setTimeout(() => { el.disabled = false; }, 5000);
   }
-  else if (act === 'pay-anyway') setUi({ patron: { ...ui.patron, showPay: true } });
   else if (act === 'share-game') {
     // Message neutre : ni prénom ni score, seulement le lien du jeu.
     const text = T('shareGameText'), url = T('shareGameUrl');
