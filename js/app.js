@@ -1124,6 +1124,7 @@ function patronScreen() {
       ${homeLogo()}
       <div class="patron">
         <h1 class="patron-intro">${T('patronSpin')}</h1>
+        ${P.tie ? `<p class="pill tie">${T('patronTie')}</p>` : ''}
         <div class="wheel-box patron-wheel">
           <div class="lights">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20}deg;--n:${i % 2}"></i>`).join('')}</div>
           <div class="pointer"></div>
@@ -1133,7 +1134,7 @@ function patronScreen() {
         </div>
       </div>`;
   }
-  const named = P.patron ? `<p class="pill">${T(P.role === 'patron' ? 'patronSpoke' : 'patronNamed', esc(P.patron))}</p>` : '';
+  const named = P.patron ? `<p class="pill">${T(P.role === 'patron' ? (P.tie ? 'patronTieSpoke' : 'patronSpoke') : (P.tie ? 'patronTieNamed' : 'patronNamed'), esc(P.patron))}</p>` : '';
   const pay = `<div class="pay" data-pay></div><p class="pay-error" data-pay-error hidden>${T('payFailed')}</p>`;
   const later = `<button class="link" data-act="patron-later">${T('later')}</button>`;
   const banners = '<div class="paid-banners" data-banners></div><div class="cheered" data-cheered hidden></div>';

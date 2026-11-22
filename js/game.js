@@ -647,9 +647,14 @@ export class Game {
     clearTimeout(this.timer);
     ranked = ranked.slice().sort((a, b) => a.order - b.order);
     const top = Math.max(...ranked.map(p => p.score));
-    const champions = ranked.filter(p => p.score === top).map(p => p.id);
-    const eligible = ranked.filter(p => p.score !== top && p.connected);
+    let champions = ranked.filter(p => p.score === top).map(p => p.id);
+    let eligible = ranked.filter(p => p.score !== top && p.connected);
+    // Égalité au sommet (personne d'autre à désigner) : la roue départage les ex æquo. Celui qu'elle désigne
+    // régale, les autres restent champions ; la suite ne change pas.
+    const tie = !eligible.length;
+    if (tie) eligible = ranked.filter(p => p.connected && champions.includes(p.id));
     const patronId = eligible.length ? eligible[randomInt(eligible.length)].id : null;
+    if (tie && patronId) champions = champions.filter(id => id !== patronId);
     const stopIndex = patronId ? ranked.findIndex(p => p.id === patronId) : null;
     let angle = null;
     if (patronId) {
@@ -663,7 +668,7 @@ export class Game {
     }
     this.patron = {
       step: patronId ? 'spin' : 'verdict', ids: ranked.map(p => p.id), names: ranked.map(p => p.author || p.name || ''),
-      stopIndex, angle, patronId, champions, paid: [], done: [], cheer: null, cheered: {},
+      stopIndex, angle, patronId, champions, tie: tie && !!patronId, paid: [], done: [], cheer: null, cheered: {},
     };
     this.patronDone = true;
     this.phase = 'patron';
@@ -831,7 +836,7 @@ export class Game {
       const P = this.patron, nameOf = pid => { const q = this.players.get(pid); return q?.author || q?.name || ''; };
       const role = P.champions.includes(id) ? 'champion' : id === P.patronId ? 'patron' : 'free';
       v.patron = {
-        step: P.step, names: P.names, stopIndex: P.stopIndex, angle: P.angle,
+        step: P.step, names: P.names, stopIndex: P.stopIndex, angle: P.angle, tie: !!P.tie,
         patron: P.patronId ? nameOf(P.patronId) : null, champions: P.champions.map(nameOf),
         role, amount: AMOUNTS[role],
         paid: P.paid.map(x => ({ name: nameOf(x.id), badge: x.badge, role: P.champions.includes(x.id) ? 'champion' : x.id === P.patronId ? 'patron' : 'free' })),

@@ -495,10 +495,20 @@ assert.equal(media.phase, 'end');
     const slice = 360 / 2, under = ((-g.patron.angle % 360) + 360) % 360;
     assert.ok(under >= slice && under < 2 * slice, 'l\'angle final pointe la case du désigné');
   }
-  const tie = finishWith({ h: 5, b: 5 });
-  assert.equal(tie.patron.patronId, null, 'tout le monde ex æquo : pas de roue');
-  assert.equal(tie.patron.step, 'verdict');
-  assert.equal(tie.view('b').patron.role, 'champion');
+  // Égalité au sommet : la roue départage les ex æquo ; le désigné régale, les autres restent champions.
+  for (let i = 0; i < 50; i++) {
+    const tie = finishWith({ h: 5, b: 5, c: 5 });
+    assert.ok(tie.patron.tie && ['h', 'b', 'c'].includes(tie.patron.patronId), 'égalité : la roue tourne quand même');
+    assert.equal(tie.patron.step, 'spin');
+    assert.deepEqual(tie.patron.champions.slice().sort(), ['h', 'b', 'c'].filter(x => x !== tie.patron.patronId).sort(), 'les autres restent champions');
+    assert.equal(tie.view(tie.patron.patronId).patron.role, 'patron');
+    assert.equal(tie.view(tie.patron.patronId).patron.amount, 100);
+    assert.equal(tie.view(tie.patron.champions[0]).patron.role, 'champion');
+  }
+  const twoTie = finishWith({ h: 5, b: 5 }, { disconnect: ['b'] });
+  assert.equal(twoTie.patron.patronId, 'h', 'jamais un déconnecté, même pour départager');
+  const split = finishWith({ h: 5, b: 5, c: 2 });
+  assert.ok(!split.patron.tie && split.patron.patronId === 'c', 'égalité en tête mais quelqu\'un derrière : la roue normale');
   assert.equal(finishWith({ h: 5, b: 3 }, { support: false }).phase, 'end', 'soutien coupé : directement l\'écran de fin');
   const solo = new Game(analysis, 'SOLO', 'h', () => {}); solo.support = true; solo.players.get('h').author = 'Inès';
   solo.phase = 'ranking'; solo.deck = [{}]; solo.index = 0; solo.advance(); clearTimeout(solo.timer);

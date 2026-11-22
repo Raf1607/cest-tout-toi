@@ -212,6 +212,9 @@ const FR = {
   // Soutien en fin de partie (roue du mécène)
   patronSpin: 'Avant de dévoiler les résultats, voyons qui régale…',
   patronSpoke: 'La roue a parlé',
+  patronTie: 'Égalité au sommet ! La roue va vous départager…',
+  patronTieSpoke: 'Égalité… la roue t\'a départagé·e',
+  patronTieNamed: n => `Égalité… la roue a désigné ${n}`,
   patronNamed: n => `La roue a désigné ${n}`,
   patronTitle: n => `C'est toi qui régales, ${n} !`,
   pitch1: 'Who is bro ? C\'est gratuit, sans pub, sans pistage. 1 € si t\'as kiffé. Deal, bro ? 🤝',
@@ -469,6 +472,9 @@ const EN = {
   // End-of-game support (patron wheel)
   patronSpin: "Before we reveal the results, let's see who's buying…",
   patronSpoke: 'The wheel has spoken',
+  patronTie: "It's a tie at the top! The wheel will settle it…",
+  patronTieSpoke: 'A tie… and the wheel picked you',
+  patronTieNamed: n => `A tie… and the wheel picked ${n}`,
   patronNamed: n => `The wheel picked ${n}`,
   patronTitle: n => `You're buying, ${n}!`,
   pitch1: "Who is bro? It's free, no ads, no tracking. 1 € if you had fun. Deal, bro? 🤝",
