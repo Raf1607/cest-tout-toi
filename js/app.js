@@ -669,20 +669,6 @@ function lobbyScreen() {
         <span>${T('absent')}${v.absentCount ? ` <small>(${v.absentCount})</small>` : ''}</span>
         <input type="checkbox" data-input="absent" ${v.settings.absent ? 'checked' : ''}>
       </label>
-      <label class="setting toggle">
-        <span>${T('wheelSetting')}</span>
-        <input type="checkbox" data-input="wheel" ${v.settings.wheel ? 'checked' : ''}>
-      </label>
-      ${v.photoCount ? `
-      <label class="setting toggle">
-        <span>${T('photosSetting')}</span>
-        <input type="checkbox" data-input="photos" ${v.settings.photos ? 'checked' : ''}>
-      </label>` : ''}
-      ${v.slideCount ? `
-      <label class="setting toggle">
-        <span>${T('slideshowSetting')}</span>
-        <input type="checkbox" data-input="slideshow" ${v.settings.slideshow ? 'checked' : ''}>
-      </label>` : ''}
       <div class="actions">
         <button class="primary big" data-act="start" ${v.canStart.ok ? '' : 'disabled'}>${T('start')}</button>
         ${v.canStart.ok ? '' : `<p class="hint">${esc(T(v.canStart.reason))}</p>`}
@@ -1353,9 +1339,6 @@ $app.addEventListener('change', e => {
   const input = e.target.dataset.input;
   if (input === 'file' && e.target.files[0]) { const file = e.target.files[0]; host(async () => file); }
   if (input === 'absent') send({ t: 'settings', settings: { absent: e.target.checked } });
-  if (input === 'photos') send({ t: 'settings', settings: { photos: e.target.checked } });
-  if (input === 'slideshow') send({ t: 'settings', settings: { slideshow: e.target.checked } });
-  if (input === 'wheel') send({ t: 'settings', settings: { wheel: e.target.checked } });
 });
 
 $app.addEventListener('input', e => {
