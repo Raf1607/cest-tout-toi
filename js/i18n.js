@@ -210,7 +210,7 @@ const FR = {
   montageIntro: 'WHO IS BRO ?',
   montageEnd: 'ET LE GAGNANT EST…',
   // Soutien en fin de partie (roue du mécène)
-  patronSpin: 'Qui va régaler ?',
+  patronSpin: 'Avant de dévoiler les résultats, voyons qui régale…',
   patronSpoke: 'La roue a parlé',
   patronNamed: n => `La roue a désigné ${n}`,
   patronTitle: n => `C'est toi qui régales, ${n} !`,
@@ -467,7 +467,7 @@ const EN = {
   montageIntro: 'WHO IS BRO ?',
   montageEnd: 'AND THE WINNER IS…',
   // End-of-game support (patron wheel)
-  patronSpin: "Who's buying?",
+  patronSpin: "Before we reveal the results, let's see who's buying…",
   patronSpoke: 'The wheel has spoken',
   patronNamed: n => `The wheel picked ${n}`,
   patronTitle: n => `You're buying, ${n}!`,

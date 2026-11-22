@@ -1116,11 +1116,14 @@ function patronScreen() {
   if (ui.patron.pay === 'thanks') return thanksScreen();
   if (P.step === 'spin') {
     const slice = 360 / P.names.length;
-    const slices = P.names.map((_, i) => `var(--${i % 2 ? 'patron-2' : 'patron-1'}) ${i * slice}deg ${(i + 1) * slice}deg`).join(',');
+    // Deux teintes en alternance ; avec un nombre impair de joueurs, la dernière case prend une troisième
+    // teinte, sinon elle se confondrait avec la première.
+    const tint = i => (P.names.length % 2 && i === P.names.length - 1 && i > 0 ? 'patron-3' : i % 2 ? 'patron-2' : 'patron-1');
+    const slices = P.names.map((_, i) => `var(--${tint(i)}) ${i * slice}deg ${(i + 1) * slice}deg`).join(',');
     return `
       ${homeLogo()}
       <div class="patron">
-        <p class="pill">${T('patronSpin')}</p>
+        <h1 class="patron-intro">${T('patronSpin')}</h1>
         <div class="wheel-box patron-wheel">
           <div class="lights">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20}deg;--n:${i % 2}"></i>`).join('')}</div>
           <div class="pointer"></div>
