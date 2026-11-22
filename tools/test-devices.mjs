@@ -107,6 +107,8 @@ async function play(sc) {
     await host.page.waitForSelector('.qr[data-code]', { timeout: 60000 });
     const code = await host.page.getAttribute('.qr[data-code]', 'data-code');
     console.log(`  code ${code}`);
+    // 100 % live : on n'entre qu'en scannant le QR code, plus de lien à envoyer.
+    if (await host.page.locator('[data-act="share"]').count()) report(host.who, 'le bouton « Envoie-leur un lien » est encore là');
     await host.page.click('[data-act="set"][data-key="rounds"][data-value="10"]');
     await host.page.click('[data-act="set"][data-key="seconds"][data-value="15"]');
 

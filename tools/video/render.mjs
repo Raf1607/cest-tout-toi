@@ -1,5 +1,5 @@
 // Fabrique la vidéo de présentation (MP4 vertical 1080×1920, 30 i/s) à partir de promo.html :
-// la musique phonk du jeu est rendue hors temps réel, chaque image est capturée par Chrome,
+// la musique de fin du jeu (js/music.js, version longue) est rendue hors temps réel, chaque image est capturée par Chrome,
 // ffmpeg assemble le tout.
 //   npm install            (une fois : puppeteer-core et ffmpeg-static)
 //   node tools/video/render.mjs [sortie.mp4]
@@ -23,7 +23,7 @@ const OUT = args[0] || join(ROOT, 'promo', LANG === 'en' ? 'who-is-bro-9x16-en.m
 const FPS = 30;
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
-// Petit serveur local : la page importe js/phonk.js, ce que file:// interdit.
+// Petit serveur local : la page importe js/music.js, ce que file:// interdit.
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png' };
 const server = createServer(async (req, res) => {
   try {
@@ -60,8 +60,10 @@ if (stillsAt) {
 await mkdir(dirname(OUT), { recursive: true });
 const wav = join(dirname(OUT), `musique-${LANG}.wav`);
 const b64 = await page.evaluate(async seconds => {
-  const { renderPhonk } = await import('/js/phonk.js');
-  const buf = await renderPhonk(seconds);
+  // Le morceau de fin dure environ 30 s : au-delà, la vidéo continue en silence.
+  const { renderMusic } = await import('/js/music.js');
+  const buf = await renderMusic('long');
+  void seconds;
   const n = buf.length, ch = buf.numberOfChannels, rate = buf.sampleRate;
   const out = new DataView(new ArrayBuffer(44 + n * ch * 2));
   const str = (o, s) => [...s].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));

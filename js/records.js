@@ -237,10 +237,36 @@ export function messageReactions(chat) {
   return out;
 }
 
-// Diaporama de fin (export avec médias) : les photos qui ont le plus fait réagir le groupe.
+// Photos du montage et du diaporama de fin : celles qui ont le plus fait réagir le groupe, la meilleure
+// d'abord. Une photo envoyée seule vaut plus qu'une parmi douze (score divisé par 1 + 0,5 × (rafale − 1)) ;
+// au plus 3 photos par personne ; on évite deux photos du même jour à la suite (tant que l'écart de score
+// reste sous 20 %) ; une photo sans aucune réaction ne passe que pour atteindre 6. Pas de hasard, sauf
+// pour départager des égalités.
+const PER_AUTHOR = 3, COLD_UNTIL = 6, SAME_DAY_GAP = 0.2;
 export function bestPhotos(chat, files, max = 10, scores = photoReactions(chat, files)) {
-  return [...scores].map(([file, p]) => ({ file, author: p.author, emojis: p.emojis, score: p.score + Math.random() }))
-    .sort((a, b) => b.score - a.score).slice(0, max).map(({ file, author, emojis }) => ({ file, author, emojis }));
+  const list = [...scores].map(([file, p]) => ({
+    file, author: p.author, emojis: p.emojis, day: p.day, raw: p.score,
+    score: p.score / (1 + 0.5 * ((p.burst || 1) - 1)), tie: Math.random(),
+  })).sort((a, b) => b.score - a.score || a.tie - b.tie);
+  const out = [], per = new Map();
+  const free = p => (per.get(p.author) || 0) < PER_AUTHOR;
+  const pick = (pool, limit) => {
+    while (out.length < limit) {
+      let i = pool.findIndex(free);
+      if (i < 0) return;
+      const last = out[out.length - 1];
+      if (last && pool[i].day === last.day) {
+        const j = pool.findIndex((p, k) => k > i && free(p) && p.day !== last.day && p.score >= (1 - SAME_DAY_GAP) * pool[i].score);
+        if (j >= 0) i = j;
+      }
+      const [p] = pool.splice(i, 1);
+      per.set(p.author, (per.get(p.author) || 0) + 1);
+      out.push(p);
+    }
+  };
+  pick(list.filter(p => p.raw > 0), max);
+  pick(list.filter(p => p.raw <= 0), Math.min(max, COLD_UNTIL));
+  return out.map(({ file, author, emojis, score }) => ({ file, author, emojis, score }));
 }
 
 // Messages cultes : ceux qui ont fait le plus réagir le groupe, à condition d'être montrables tels quels.

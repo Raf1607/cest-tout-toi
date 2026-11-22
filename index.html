@@ -104,8 +104,6 @@
   .home-bottom .how { margin-top: auto; }   /* juste au-dessus du bas de page */
   .join-qr { align-items: center; text-align: center; }
   .join-qr .qr { width: min(260px, 68vw); padding: 10px; border-radius: 16px; }
-  .join-qr .remote { font-size: 14px; }
-  .join-qr .remote .link { padding: 0 2px; font-size: 14px; color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
   .sheet-top { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
   .sheet-top h1 { font-size: 30px; }
   .back { background: none; border: 0; padding: 6px; margin-left: -8px; }
@@ -396,6 +394,29 @@
 
   @media (min-width: 520px) { #app { padding-top: 32px; } }
   @media (prefers-reduced-motion: reduce) { .bubble, .answer, .slide, .slide img, .board li, .board b, .board s, .edit-frame, .edit-frame > *, .lights i, .pointer, .hub, .spot, .wheel-box, .wheel-box s { animation: none !important; } .reacts span { animation: none; opacity: 1; } }
+
+  /* Fin de partie en musique : « Sounds on », puis le montage calé sur le morceau (124 BPM : un temps = 0,484 s) */
+  .soundson { min-height: calc(100vh - 60px); min-height: calc(100dvh - 60px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; }
+  .soundson h1 { margin: 6px 0 0; font: 800 clamp(40px, 13vw, 60px)/1 var(--display); }
+  .soundson .hint { margin: 0; color: var(--muted); font-size: 17px; max-width: 26ch; }
+  .soundson .track { margin: 6px 0 0; padding: 8px 14px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); font-weight: 600; }
+  .speaker { position: relative; width: 150px; height: 150px; display: grid; place-items: center; animation: beat .484s ease-out infinite; }
+  .speaker span { font-size: 78px; line-height: 1; position: relative; z-index: 1; }
+  .speaker i { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--accent); opacity: 0; animation: wave 1.935s ease-out infinite; }
+  .speaker i:nth-of-type(2) { animation-delay: .484s; }
+  .speaker i:nth-of-type(3) { animation-delay: .968s; }
+  @keyframes beat { 0% { transform: scale(1.08); } 100% { transform: scale(1); } }
+  @keyframes wave { from { transform: scale(.55); opacity: .8; } to { transform: scale(1.35); opacity: 0; } }
+  .countdown { margin: 0; min-height: 56px; font: 800 52px/1 var(--display); color: var(--accent); }
+  .countdown.tick { animation: pop .3s cubic-bezier(.2, 1.6, .4, 1); }
+  .edit-frame.drop > * { animation: editDrop .45s cubic-bezier(.1, 1.5, .3, 1); }
+  .edit-frame.build > * { animation: editBuild 1.935s cubic-bezier(.6, 0, .9, .4) forwards; }
+  .edit-frame.fadeout { position: relative; }
+  .edit-frame.fadeout .edit-text { position: relative; z-index: 1; animation: fade .6s ease-out; }
+  .edit-bg { position: absolute; inset: -20px; background-size: cover; background-position: center; filter: blur(14px) brightness(.55); animation: fade 1s ease-out; }
+  @keyframes editDrop { from { transform: scale(1.6); filter: brightness(2.2); } }
+  @keyframes editBuild { from { transform: scale(1); } to { transform: scale(1.45); } }
+  @media (prefers-reduced-motion: reduce) { .speaker, .speaker i, .countdown.tick { animation: none; } .speaker i { display: none; } }
 </style>
 </head>
 <body>
@@ -409,19 +430,20 @@
      les téléphones ne gardent pas une ancienne version en cache. -->
 <script type="importmap">
 { "imports": {
-  "./js/whatsapp.js": "./js/whatsapp.js?v=202611220027",
-  "./js/tics.js": "./js/tics.js?v=202611220027",
-  "./js/game.js": "./js/game.js?v=202611220027",
-  "./js/net.js": "./js/net.js?v=202611220027",
-  "./js/media.js": "./js/media.js?v=202611220027",
-  "./js/records.js": "./js/records.js?v=202611220027",
-  "./js/i18n.js": "./js/i18n.js?v=202611220027",
-  "./js/resume.js": "./js/resume.js?v=202611220027",
-  "./js/phonk.js": "./js/phonk.js?v=202611220027",
-  "./js/tuning.js": "./js/tuning.js?v=202611220027",
-  "./js/scoring.js": "./js/scoring.js?v=202611220027"
+  "./js/whatsapp.js": "./js/whatsapp.js?v=202611220106",
+  "./js/tics.js": "./js/tics.js?v=202611220106",
+  "./js/game.js": "./js/game.js?v=202611220106",
+  "./js/net.js": "./js/net.js?v=202611220106",
+  "./js/media.js": "./js/media.js?v=202611220106",
+  "./js/records.js": "./js/records.js?v=202611220106",
+  "./js/i18n.js": "./js/i18n.js?v=202611220106",
+  "./js/resume.js": "./js/resume.js?v=202611220106",
+  "./js/music.js": "./js/music.js?v=202611220106",
+  "./js/clock.js": "./js/clock.js?v=202611220106",
+  "./js/tuning.js": "./js/tuning.js?v=202611220106",
+  "./js/scoring.js": "./js/scoring.js?v=202611220106"
 } }
 </script>
-<script type="module" src="js/app.js?v=202611220027"></script>
+<script type="module" src="js/app.js?v=202611220106"></script>
 </body>
 </html>
