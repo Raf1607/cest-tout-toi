@@ -1123,8 +1123,7 @@ function patronScreen() {
     return `
       ${homeLogo()}
       <div class="patron">
-        <h1 class="patron-intro">${T('patronSpin')}</h1>
-        ${P.tie ? `<p class="pill tie">${T('patronTie')}</p>` : ''}
+        <h1 class="patron-intro">${T(P.tie ? 'patronTie' : 'patronSpin')}</h1>
         <div class="wheel-box patron-wheel">
           <div class="lights">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20}deg;--n:${i % 2}"></i>`).join('')}</div>
           <div class="pointer"></div>

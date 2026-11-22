@@ -212,7 +212,7 @@ const FR = {
   // Soutien en fin de partie (roue du mécène)
   patronSpin: 'Avant de dévoiler les résultats, voyons qui régale…',
   patronSpoke: 'La roue a parlé',
-  patronTie: 'Égalité au sommet ! La roue va vous départager…',
+  patronTie: 'Égalité au sommet ! Avant les résultats, la roue va vous départager…',
   patronTieSpoke: 'Égalité… la roue t\'a départagé·e',
   patronTieNamed: n => `Égalité… la roue a désigné ${n}`,
   tieWon: n => `Tu as gagné, ${n} !`,
@@ -476,7 +476,7 @@ const EN = {
   // End-of-game support (patron wheel)
   patronSpin: "Before we reveal the results, let's see who's buying…",
   patronSpoke: 'The wheel has spoken',
-  patronTie: "It's a tie at the top! The wheel will settle it…",
+  patronTie: "It's a tie at the top! Before the results, the wheel will settle it…",
   patronTieSpoke: 'A tie… and the wheel picked you',
   patronTieNamed: n => `A tie… and the wheel picked ${n}`,
   tieWon: n => `You won, ${n}!`,
