@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { parseChat } from '../js/whatsapp.js';
 import { analyze } from '../js/tics.js';
-import { Game, WHEEL, MAX_CHOICES, categoryOf } from '../js/game.js';
+import { Game, WHEEL, MAX_CHOICES, categoryOf, stemPlan } from '../js/game.js';
+import { bestPhotos } from '../js/records.js';
+import { BAR } from '../js/music.js';
 import { TUNING } from '../js/tuning.js';
 import { readZipExport } from './zip-export.mjs';
 import './samples.mjs';
@@ -126,7 +128,15 @@ for (let i = 0; i < media.deck.length; i++) {
   media.next();
   media.advance();
 }
-assert.equal(media.phase, 'montage', 'le montage précède le classement final');
+assert.equal(media.phase, 'soundson', '« Sounds on » avant le montage');
+const sv = media.view('b');
+assert.ok(sv.music && sv.music.startAt > performance.now() && sv.music.prepBars === 3, 'départ programmé de la musique, 3 mesures de « Sounds on »');
+assert.deepEqual([sv.music.mine.length > 0, sv.music.solo], [true, false], 'chaque téléphone a ses pistes');
+media.handle('b', { t: 'skip' });
+assert.equal(media.phase, 'soundson', 'seul l\'hôte peut passer');
+media.toMontage();
+assert.equal(media.phase, 'montage', 'le montage suit, sur le même morceau');
+assert.equal(media.view('b').music.startAt, sv.music.startAt, 'même heure de départ : la musique ne s\'interrompt pas');
 const mv = media.view('b').montage;
 assert.ok(mv.items.length >= 15, 'au moins 15 médias dans le montage');
 assert.ok(mv.items.every(m => exp.files.has(m.id)));
@@ -528,6 +538,85 @@ assert.equal(media.phase, 'end');
   bg.request('x', 'Zoé', 'diamond'); bg.admit('x', true);
   bg.request('y', 'Hugo', '<script>'); bg.admit('y', true);
   assert.deepEqual([bg.players.get('x').badge, bg.players.get('y').badge], ['diamond', null]);
+}
+
+// Fin de partie en musique : version selon le nombre de photos, pistes réparties, reprise d'un téléphone parti.
+{
+  const withPhotos = n => {
+    const g = new Game(media.analysis, 'MUSI', 'h', () => {});
+    g.analysis = { ...media.analysis, montage: [...Array(n)].map((_, i) => ({ file: `p${i}.jpg`, kind: 'photo' })).concat([{ file: 's.webp', kind: 'sticker' }]) };
+    return g;
+  };
+  let g = withPhotos(9); g.soundsOn(); clearTimeout(g.timer);
+  assert.deepEqual([g.music.version, g.music.bars], ['short', 10], '9 photos : version courte');
+  g = withPhotos(10); g.soundsOn(); clearTimeout(g.timer);
+  assert.deepEqual([g.music.version, g.music.bars], ['long', 15], '10 photos : version longue');
+  assert.deepEqual(g.view('h').music.solo, true, 'un téléphone seul joue tout le morceau');
+
+  const expected = {
+    1: [['all']], 2: [['kick', 'bass', 'perc'], ['chords', 'lead', 'fx']], 3: [['kick', 'perc'], ['bass', 'chords'], ['lead', 'fx']],
+    4: [['kick', 'perc'], ['bass'], ['chords'], ['lead', 'fx']], 5: [['kick'], ['perc'], ['bass'], ['chords'], ['lead', 'fx']],
+    6: [['kick'], ['perc'], ['bass'], ['chords'], ['lead'], ['fx']],
+  };
+  for (const [n, plan] of Object.entries(expected)) assert.deepEqual(stemPlan(+n), plan, `pistes pour ${n} téléphones`);
+  assert.deepEqual(stemPlan(9).slice(6), [['lead'], ['perc'], ['chords']], 'au-delà de 6 : mélodie, percus, accords en double');
+  for (let n = 1; n <= 9; n++) {
+    const all = stemPlan(n).flat();
+    assert.ok(n === 1 || ['kick', 'bass', 'perc', 'chords', 'lead', 'fx'].every(k => all.includes(k)), `toutes les pistes jouées à ${n}`);
+  }
+
+  // Quatre téléphones : l'hôte d'abord, puis l'ordre d'arrivée ; un téléphone mal calé ne garde pas le kick.
+  g = withPhotos(12);
+  ['b', 'c', 'd'].forEach(id => g.join(id));
+  g.handle('b', { t: 'sync-quality', rtt: 140, jitter: 30 });
+  g.soundsOn(); clearTimeout(g.timer);
+  assert.deepEqual(g.music.assign.h, ['kick', 'perc']);
+  assert.ok(!g.music.assign.b.some(k => ['kick', 'perc', 'bass'].includes(k)), 'téléphone mal calé : piste peu rythmique');
+  const before = JSON.stringify(g.music.assign);
+  g.music.startAt = performance.now() - 2.5 * BAR * 1000;    // en pleine 3e mesure
+  g.leave('c');
+  const to = Object.keys(g.music.assign).find(id => g.music.from[id]);
+  assert.ok(to && !g.music.assign.c, 'les pistes du téléphone parti sont reprises');
+  assert.equal(g.music.from[to], 3, 'à la mesure suivante');
+  assert.notEqual(JSON.stringify(g.music.assign), before);
+  assert.ok(Object.values(g.music.assign).flat().length >= 4);
+  g.handle('h', { t: 'skip' });
+  assert.equal(g.phase, 'end', 'l\'hôte peut passer pendant « Sounds on »');
+  assert.equal(g.view('b').music, undefined, 'plus de musique : chacun coupe la sienne');
+
+  // Score des photos du montage : rafales pénalisées, 3 par personne au plus, pas de hasard hors égalités,
+  // photos sans réaction seulement pour atteindre 6.
+  const shots = new Map([
+    ['a1', { author: 'A', score: 10, burst: 1, day: 1, emojis: [] }], ['a2', { author: 'A', score: 9, burst: 1, day: 2, emojis: [] }],
+    ['a3', { author: 'A', score: 8, burst: 1, day: 3, emojis: [] }], ['a4', { author: 'A', score: 7, burst: 1, day: 4, emojis: [] }],
+    ['b1', { author: 'B', score: 12, burst: 5, day: 5, emojis: [] }], ['c1', { author: 'C', score: 2, burst: 1, day: 6, emojis: [] }],
+    ['z1', { author: 'D', score: 0, burst: 1, day: 7, emojis: [] }], ['z2', { author: 'D', score: 0, burst: 1, day: 8, emojis: [] }],
+  ]);
+  const runs = new Set([...Array(20)].map(() => bestPhotos({}, new Map(), 10, shots).map(p => p.file).filter(f => !f.startsWith('z')).join()));
+  assert.equal(runs.size, 1, 'même sélection à chaque fois (le hasard ne départage que des égalités)');
+  const pick = bestPhotos({}, new Map(), 10, shots).map(p => p.file);
+  assert.equal(pick[0], 'a1', 'la meilleure d\'abord (celle de la rafale est pénalisée)');
+  assert.ok(!pick.includes('a4'), 'au plus 3 photos par personne');
+  assert.ok(pick.indexOf('b1') > pick.indexOf('a2'), 'rafale de 5 : score divisé par 3');
+  assert.deepEqual(pick.filter(f => f.startsWith('z')).length, 1, 'sans réaction : seulement pour atteindre 6 photos');
+}
+
+// Enchaînement de fin avec le soutien actif : « Sounds on », montage, puis la roue du mécène (même en passant).
+{
+  const end = new Game(media.analysis, 'FINS', 'h', () => {});
+  end.support = true;
+  end.join('b');
+  end.players.get('h').author = 'Julie Moreau'; end.players.get('h').score = 6;
+  end.players.get('b').author = 'Inès'; end.players.get('b').score = 2;
+  end.phase = 'ranking'; end.deck = [{}]; end.index = 0;
+  end.advance(); clearTimeout(end.timer);
+  assert.equal(end.phase, 'soundson');
+  end.toMontage(); clearTimeout(end.timer);
+  assert.equal(end.phase, 'montage');
+  end.handle('h', { t: 'skip' }); clearTimeout(end.timer);
+  assert.equal(end.phase, 'patron', 'après le montage (même passé) : la roue du mécène');
+  assert.equal(end.view('b').music, undefined, 'la musique s\'arrête partout');
+  assert.equal(end.patron.patronId, 'b');
 }
 
 console.log('OK —', owners.join(' › '), '· médias :', [...kinds].join(', '));

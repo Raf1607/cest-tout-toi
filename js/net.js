@@ -2,6 +2,7 @@
 // serveur public de mise en relation) : l'hôte ouvre une salle nommée d'après le code de la
 // partie, les invités s'y connectent. Les échanges de jeu ne passent par aucun serveur.
 /* global Peer */
+import { Clock } from './clock.js';
 
 const PREFIX = 'cest-tout-toi-v1-';
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -54,6 +55,12 @@ export async function openRoom(onConnection, wanted = null) {
 export class Client {
   constructor(code, id, name, { onMessage, onStatus, badge = null }) {
     Object.assign(this, { code, id, name, badge, onMessage, onStatus, conn: null, joined: false, failures: 0, timer: null });
+    // Horloge commune avec l'hôte (musique de fin synchronisée) : une rafale de 8 mesures à la connexion,
+    // puis une toutes les 2 secondes pendant toute la partie ; on recommence au retour de veille.
+    this.clock = new Clock();
+    this.pinger = setInterval(() => this.ping(), 2000);
+    this.onVisible = () => { if (document.visibilityState === 'visible') this.burst(); };
+    document.addEventListener('visibilitychange', this.onVisible);
     this.peer = new Peer();
     keepRegistered(this.peer);
     this.peer.on('open', () => { if (!this.conn) this.connect(); });
@@ -77,8 +84,12 @@ export class Client {
       this.failures = 0;
       this.onStatus('ok');
       conn.send({ t: 'hello', id: this.id, name: this.name, badge: this.badge });
+      this.burst();
     });
-    conn.on('data', msg => this.onMessage(msg));
+    conn.on('data', msg => {
+      if (msg?.t === 'pong') { if (typeof msg.a === 'number' && typeof msg.h === 'number') this.clock.add(msg.a, msg.h, performance.now()); return; }
+      this.onMessage(msg);
+    });
     conn.on('close', () => { if (this.conn === conn) this.retry(); });
     conn.on('error', () => { if (this.conn === conn) this.retry(); });
   }
@@ -96,9 +107,22 @@ export class Client {
 
   send(msg) { try { if (this.conn?.open) this.conn.send(msg); } catch { this.retry(); } }
 
+  ping() { this.send({ t: 'ping', a: performance.now() }); }
+
+  // Rafale de 8 mesures espacées de 150 ms, après une connexion ou un retour de veille.
+  burst() {
+    this.clock.reset();
+    for (let i = 0; i < 8; i++) setTimeout(() => this.ping(), i * 150);
+  }
+
+  // Heure de l'hôte, vue d'ici.
+  hostNow() { return this.clock.toHost(performance.now()); }
+
   close() {
     clearTimeout(this.timer);
     this.timer = null;
+    clearInterval(this.pinger);
+    document.removeEventListener('visibilitychange', this.onVisible);
     this.peer.destroy();
   }
 }

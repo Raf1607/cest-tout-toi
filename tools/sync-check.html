@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<!-- Vérification de la synchronisation entre téléphones (hors prod) : chaque téléphone affiche un flash plein
+     écran à chaque temps (124 BPM) à partir de la même heure de départ, avec l'horloge commune du jeu
+     (js/clock.js). À filmer au ralenti, 3 ou 4 vrais téléphones posés côte à côte, sur le même Wi-Fi.
+     Lancer depuis la racine du dépôt : python3 -m http.server 8800, puis http://<ip-du-mac>:8800/tools/sync-check.html -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synchro des téléphones</title>
+<style>
+  body { margin: 0; background: #16131d; color: #f5f1e8; font: 18px/1.4 system-ui, sans-serif; text-align: center; }
+  main { padding: 24px 16px; }
+  button, input { font: 600 18px system-ui; padding: 12px 16px; border-radius: 12px; border: 1px solid #3a3448; background: #2d2839; color: inherit; margin: 6px; }
+  #flash { position: fixed; inset: 0; background: #ffcf3f; opacity: 0; pointer-events: none; }
+  #flash.on { opacity: 1; }
+  #flash.one { background: #fff; }
+  #info { font-variant-numeric: tabular-nums; color: #a7a1b5; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<div id="flash"></div>
+<main>
+  <h1>Synchro des téléphones</h1>
+  <p><button id="host">Je suis l'hôte</button></p>
+  <p><input id="code" placeholder="Code" maxlength="6" size="7"> <button id="join">Rejoindre</button></p>
+  <p id="state"></p>
+  <p><button id="go" hidden>Lancer (16 temps)</button></p>
+  <p id="info"></p>
+</main>
+<script type="module">
+import { openRoom, Client } from '../js/net.js';
+const BEAT = 60000 / 124;
+const $ = id => document.getElementById(id);
+let now = () => performance.now(), conns = [], client = null;
+
+function flashes(startAt) {
+  for (let i = 0; i < 16; i++) {
+    const delay = startAt + i * BEAT - now();
+    if (delay < 0) continue;
+    setTimeout(() => {
+      $('flash').className = `on ${i % 4 ? '' : 'one'}`;
+      setTimeout(() => { $('flash').className = ''; }, 80);
+    }, delay);
+  }
+}
+
+$('host').onclick = async () => {
+  const room = await openRoom(conn => {
+    conns.push(conn);
+    $('state').textContent = `${conns.length} téléphone(s) connecté(s)`;
+    conn.on('data', msg => { if (msg?.t === 'ping') conn.send({ t: 'pong', a: msg.a, h: performance.now() }); });
+  });
+  $('state').textContent = `Code : ${room.code}`;
+  $('go').hidden = false;
+};
+$('go').onclick = () => {
+  const startAt = performance.now() + 2000;
+  for (const c of conns) if (c.open) c.send({ t: 'go', startAt });
+  flashes(startAt);
+};
+$('join').onclick = () => {
+  client = new Client($('code').value.toUpperCase(), Math.random().toString(36).slice(2), 'test', {
+    onMessage(msg) { if (msg?.t === 'go') flashes(msg.startAt); },
+    onStatus(s) { $('state').textContent = `Connexion : ${s}`; },
+  });
+  now = () => client.hostNow();
+  setInterval(() => { const q = client.clock.quality(); $('info').textContent = `trajet minimal ${q.rtt.toFixed(1)} ms · écart-type ${q.jitter.toFixed(1)} ms · ${client.clock.samples.length} mesures`; }, 1000);
+};
+</script>
+</body>
+</html>

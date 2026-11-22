@@ -6,6 +6,7 @@ import { TUNING as T } from './tuning.js';
 import { score } from './scoring.js';
 import { DICT } from './i18n.js';
 import { SUPPORT_ENABLED } from './support.js';
+import { BAR, PREP_BARS, SHORT_BARS, LONG_BARS, LONG_MIN_PHOTOS, TAIL } from './music.js';
 
 export const ROUNDS = [10, 15, 20];
 export const SECONDS = [15, 25, 40];
@@ -52,8 +53,27 @@ const BADGE_RANK = { crown: 1, diamond: 2 };
 export const badgeOf = b => (BADGE_RANK[b] ? b : null);
 const bestBadge = (a, b) => ((BADGE_RANK[b] || 0) > (BADGE_RANK[a] || 0) ? b : a || null);
 
-export const MONTAGE_MS = 15000;   // montage de fin, avant le classement final
+
+// Fin de partie en musique : « Sounds on » (3 mesures, la musique démarre déjà), puis le montage photo sur la
+// suite du même morceau, 20 s en tout (moins de 10 photos) ou 30 s. La musique part au même instant sur tous
+// les téléphones : l'hôte fixe l'heure de départ (son horloge, performance.now()) un peu à l'avance.
 const MONTAGE_MIN_ITEMS = 3;
+export const MUSIC_LEAD = 1500;               // ms entre l'annonce et le départ de la musique
+const hostNow = () => performance.now();
+// Répartition des 6 pistes entre les téléphones connectés (hôte d'abord, puis ordre d'arrivée).
+// Au-delà de 6, les suivants doublent la mélodie, les percus, les accords, la mélodie…
+const PLAN = {
+  1: [['all']],
+  2: [['kick', 'bass', 'perc'], ['chords', 'lead', 'fx']],
+  3: [['kick', 'perc'], ['bass', 'chords'], ['lead', 'fx']],
+  4: [['kick', 'perc'], ['bass'], ['chords'], ['lead', 'fx']],
+  5: [['kick'], ['perc'], ['bass'], ['chords'], ['lead', 'fx']],
+  6: [['kick'], ['perc'], ['bass'], ['chords'], ['lead'], ['fx']],
+};
+const EXTRA = ['lead', 'perc', 'chords'];
+export const stemPlan = n => (n <= 6 ? PLAN[Math.max(1, n)].map(x => x.slice()) : [...PLAN[6].map(x => x.slice()), ...Array.from({ length: n - 6 }, (_, i) => [EXTRA[i % 3]])]);
+const RHYTHMIC = ['kick', 'perc', 'bass'];
+const POOR_SYNC = 80;                          // ms : un téléphone mal calé prend une piste peu rythmique
 const RANKING_MS = 3000;         // durée de l'écran de classement entre deux manches
 
 function shuffle(a) {
@@ -274,6 +294,8 @@ export class Game {
     this.support = SUPPORT_ENABLED;   // soutien en fin de partie (coupé sans clé Stripe)
     this.patron = null;               // phase « patron » : roue du mécène et paiements
     this.patronDone = false;          // déjà proposé dans ce salon : pas deux fois (« Rejouer » le même soir)
+    this.music = null;                // musique de fin : version, heure de départ, pistes de chacun
+    this.syncQuality = {};            // id → { rtt, jitter } : qualité du calage d'horloge de chaque invité
     this.join(hostId);
     this.onChange = onChange;
   }
@@ -322,6 +344,7 @@ export class Game {
     if (this.waiting.delete(id)) return this.changed();
     const p = this.players.get(id);
     if (!p) return;
+    this.handOver(id);
     if (this.phase === 'lobby' && !p.author && !p.outside) this.players.delete(id);
     else p.connected = false;
     this.checkVotes();
@@ -365,7 +388,10 @@ export class Game {
       }
     } else if (msg.t === 'next' && host && this.phase === 'reveal') {
       return this.next();
-    } else if (msg.t === 'skip' && host && this.phase === 'montage') {
+    } else if (msg.t === 'sync-quality' && Number.isFinite(msg.rtt) && Number.isFinite(msg.jitter)) {
+      this.syncQuality[id] = { rtt: msg.rtt, jitter: msg.jitter };
+      return;
+    } else if (msg.t === 'skip' && host && (this.phase === 'montage' || this.phase === 'soundson')) {
       return this.wrapUp();
     } else if (msg.t === 'skip' && host && this.phase === 'patron') {
       return this.finish();
@@ -520,9 +546,60 @@ export class Game {
     this.index++;
     if (this.index < this.deck.length) return this.ask();
     if (this.montageItems().length < MONTAGE_MIN_ITEMS) return this.wrapUp();
-    this.phase = 'montage';
-    this.timer = setTimeout(() => this.wrapUp(), MONTAGE_MS);
+    this.soundsOn();
+  }
+
+  // « Sounds on » : version du morceau selon le nombre de photos du montage, départ programmé, pistes de chacun.
+  soundsOn() {
+    clearTimeout(this.timer);
+    const photos = this.montageItems().filter(m => m.kind === 'photo').length;
+    const version = photos >= LONG_MIN_PHOTOS ? 'long' : 'short';
+    const bars = version === 'long' ? LONG_BARS : SHORT_BARS;
+    const startAt = hostNow() + MUSIC_LEAD;
+    this.music = { version, bars, startAt, assign: this.assignStems(), from: {} };
+    this.phase = 'soundson';
+    this.timer = setTimeout(() => this.toMontage(), startAt + PREP_BARS * BAR * 1000 - hostNow());
     this.changed();
+  }
+
+  // Le montage commence pile au début de la mesure 4, la musique continue sans coupure.
+  toMontage() {
+    if (this.phase !== 'soundson') return;
+    this.phase = 'montage';
+    const { startAt, bars } = this.music;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.wrapUp(), startAt + (bars * BAR + TAIL) * 1000 - hostNow());
+    this.changed();
+  }
+
+  // Pistes de chaque téléphone connecté. Un téléphone mal calé (trajet minimal > 80 ms) échange ses pistes
+  // rythmiques (kick, percus, basse) contre celles d'un téléphone bien calé qui joue accords ou effets.
+  assignStems() {
+    const phones = [...this.players.values()].filter(p => p.connected)
+      .sort((a, b) => (b.id === this.hostId) - (a.id === this.hostId) || a.order - b.order).map(p => p.id);
+    const plan = stemPlan(phones.length);
+    const assign = Object.fromEntries(phones.map((id, i) => [id, plan[i]]));
+    const poor = id => (this.syncQuality[id]?.rtt ?? 0) > POOR_SYNC;
+    for (const id of phones) {
+      if (!poor(id) || !assign[id].some(k => RHYTHMIC.includes(k))) continue;
+      const mate = phones.find(o => !poor(o) && assign[o].every(k => !RHYTHMIC.includes(k)));
+      if (mate) [assign[id], assign[mate]] = [assign[mate], assign[id]];
+    }
+    return assign;
+  }
+
+  // Un téléphone part pendant la musique : ses pistes passent à celui qui en a le moins, à la mesure suivante.
+  handOver(id) {
+    const m = this.music;
+    if (!m || (this.phase !== 'soundson' && this.phase !== 'montage') || !m.assign[id]) return;
+    const stems = m.assign[id];
+    delete m.assign[id];
+    const others = Object.keys(m.assign).filter(o => this.players.get(o)?.connected && o !== id);
+    if (!others.length) return;
+    const to = others.sort((a, b) => m.assign[a].length - m.assign[b].length)[0];
+    m.assign[to] = m.assign[to].includes('all') ? ['all'] : [...new Set([...m.assign[to], ...stems])];
+    if (stems.includes('all') || m.assign[to].length >= 6) m.assign[to] = ['all'];
+    m.from[to] = Math.max(0, Math.floor((hostNow() - m.startAt) / (BAR * 1000)) + 1);
   }
 
   // Après le montage (ou la dernière manche) : la roue du mécène si le soutien est actif, une seule fois
@@ -623,9 +700,9 @@ export class Game {
   // Instantané de la partie (données simples), gardé sur le téléphone de l'hôte pour reprendre après
   // un rechargement de la page.
   snapshot() {
-    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone } = this;
+    const { code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone, music } = this;
     return {
-      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone,
+      code, hostId, settings, phase, deck, options, round, order, pending, wheel, records, index, ranking, spare, patron, patronDone, music,
       used: [...this.used], shields: [...this.shields], allowed: [...this.allowed], refused: [...this.refused],
       players: [...this.players.values()],
     };
@@ -635,7 +712,7 @@ export class Game {
   // acceptés, ils rentrent directement), et les minuteurs repartent en leur laissant le temps.
   static restore(analysis, snap) {
     const g = new Game(analysis, snap.code, snap.hostId, null);
-    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking', 'spare', 'patron']) g[k] = snap[k];
+    for (const k of ['settings', 'phase', 'deck', 'options', 'round', 'order', 'pending', 'wheel', 'records', 'index', 'ranking', 'spare', 'patron', 'music']) g[k] = snap[k];
     g.patronDone = !!snap.patronDone;
     if (g.round) g.round.card = g.deck[g.index] || g.round.card;
     g.used = new Set(snap.used);
@@ -648,7 +725,8 @@ export class Game {
       g.round.endsAt = Math.max(g.round.endsAt, Date.now() + RESUME_GRACE);
       g.timer = setTimeout(() => g.reveal(), g.round.endsAt - Date.now() + 300);
     } else if (g.phase === 'ranking' || g.phase === 'wheel') g.timer = setTimeout(() => g.advance(), 2000);
-    else if (g.phase === 'montage') g.timer = setTimeout(() => g.wrapUp(), MONTAGE_MS);
+    // L'heure de l'hôte repart de zéro avec la page : la musique ne peut pas reprendre, on passe à la suite.
+    else if (g.phase === 'montage' || g.phase === 'soundson') g.timer = setTimeout(() => g.wrapUp(), 2000);
     else if (g.phase === 'patron' && g.patron?.step === 'spin') g.timer = setTimeout(() => g.verdict(), 2000);
     else if (g.phase === 'patron') g.timer = setTimeout(() => g.finish(), PATRON_MAX_MS);
     return g;
@@ -704,9 +782,12 @@ export class Game {
         }),
       };
     }
-    if (this.phase === 'montage') {
+    if (this.phase === 'soundson' || this.phase === 'montage') {
+      const m = this.music, mine = m.assign[id] || [];
+      v.music = { version: m.version, bars: m.bars, prepBars: PREP_BARS, startAt: m.startAt, mine: mine.includes('all') ? [] : mine, solo: mine.includes('all'), from: m.from[id] || 0 };
+      // Les photos dans l'ordre du score (la meilleure d'abord), puis stickers et GIF.
       v.montage = {
-        items: this.montageItems().map(m => ({ ...mediaOf(m), kind: m.kind })),
+        items: this.montageItems().map(x => ({ ...mediaOf(x), kind: x.kind })),
         quotes: this.montageQuotes(),
       };
     }

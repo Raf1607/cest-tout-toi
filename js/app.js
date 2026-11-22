@@ -3,8 +3,8 @@
 /* global qrcode, NoSleep */
 import { parseChat } from './whatsapp.js';
 import { analyze } from './tics.js';
-import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_SPIN_MS, ROULETTE_MS, MONTAGE_MS, PATRON_SPIN_MS, badgeOf } from './game.js';
-import { BPM, unlockAudio, playPhonk } from './phonk.js';
+import { Game, ROUNDS, SECONDS, WHEEL, WHEEL_SPIN_MS, ROULETTE_MS, PATRON_SPIN_MS, badgeOf } from './game.js';
+import { unlockAudio, audioContext, audioRunning, outputLatency, startMusic, BAR, BEAT, firstDrop, STEM_ICONS } from './music.js';
 import { openRoom, Client, CODE_LENGTH } from './net.js';
 import { readExport, mediaBlob, toChunks, MediaInbox } from './media.js';
 import { pickLang, saveLang, tr } from './i18n.js';
@@ -51,6 +51,11 @@ let endsAt = 0;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => n.toLocaleString(T('locale'));
 const send = msg => (game ? game.handle(myId, msg) : client?.send(msg));
+let syncReport = null;
+// Heure de l'hôte (référence de la musique de fin) : la sienne pour l'hôte, estimée pour un invité.
+const hostNow = () => (game || !client ? performance.now() : client.hostNow());
+// Délai (ms, depuis maintenant) jusqu'à un instant donné en heure de l'hôte.
+const untilHost = t => t - hostNow();
 // Envoi à un invité : un canal qui se ferme (téléphone en veille, départ) peut refuser l'envoi.
 const post = (conn, msg) => { try { if (conn.open) conn.send(msg); } catch { /* il se reconnectera */ } };
 const inviteUrl = code => `${location.origin + location.pathname}?p=${code}`;
@@ -137,7 +142,7 @@ const nameOf = p => p.author || p.name || (p.host ? T('hostName') : T('newPlayer
 // Stickers, GIF et photos à montrer : id (nom du fichier dans l'export) → adresse locale de l'image.
 const mediaCache = new Map();
 function mediaArrived(id) {
-  if (view?.phase === 'montage') return;   // le montage pioche dans ce qui est arrivé
+  if (view?.phase === 'montage' || view?.phase === 'soundson') return;   // le montage pioche dans ce qui est arrivé
   if (view?.phase === 'end' || view?.phase === 'patron') {
     if (!$app.querySelector('[data-slides] .slide')) mountSlides();   // première photo arrivée
     return;
@@ -232,6 +237,8 @@ async function launch(analysis, entries, file, snap = null) {
     const room = await openRoom(conn => {
       let pid = null;
       conn.on('data', msg => {
+        // Horloge commune : l'hôte répond tout de suite avec son heure (voir js/clock.js).
+        if (msg?.t === 'ping' && typeof msg.a === 'number') return post(conn, { t: 'pong', a: msg.a, h: performance.now() });
         if (msg?.t === 'hello' && typeof msg.id === 'string') {
           pid = msg.id.slice(0, 40);
           const old = conns.get(pid);
@@ -342,6 +349,10 @@ function join(code, name = store.get('ctt-name') || '') {
   setUi({ screen: 'busy', busy: T('connecting'), error: '', notice: '' });
   client?.close();
   const inbox = new MediaInbox((id, url) => { mediaCache.set(id, url); mediaArrived(id); });
+  clearInterval(syncReport);
+  // Qualité du calage d'horloge, envoyée à l'hôte de temps en temps : un téléphone mal calé recevra une
+  // piste peu rythmique dans la musique de fin.
+  syncReport = setInterval(() => { if (client?.clock.ready) client.send({ t: 'sync-quality', ...client.clock.quality() }); }, 10000);
   client = new Client(code, myId, name, {
     badge: myBadge(),
     onMessage(msg) {
@@ -396,6 +407,7 @@ function show(v) {
   if (fresh && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(40);
   endsAt = v.phase === 'question' ? Date.now() + v.round.remaining : 0;   // l'hôte peut raccourcir le temps
   render();
+  syncMusic();
 }
 
 function render() {
@@ -407,7 +419,8 @@ function render() {
     : inGame && view.phase === 'question' ? `${view.round.n}/${ui.status}`
     : inGame && view.phase === 'ranking' ? `classement${view.ranking.n}`
     : inGame && view.phase === 'wheel' ? `roue${view.wheel.index}`
-    : inGame && view.phase === 'montage' ? 'montage' : '';
+    : inGame && view.phase === 'montage' ? 'montage'
+    : inGame && view.phase === 'soundson' ? `soundson/${audioRunning() ? 'on' : 'off'}` : '';
   if (key && $app.dataset.key === key) {
     if (patron) patchPatron();          // le bouton de paiement, déjà monté, ne doit pas être redessiné
     else if (view.phase === 'question') { patchQuestion(); tick(); }   // le classement animé, lui, n'est pas interrompu
@@ -423,7 +436,7 @@ function render() {
   else if (ui.screen === 'howto') html = howtoScreen();
   else if (ui.screen === 'busy') html = `${client ? homeLogo() : ''}<div class="busy"><div class="spinner"></div><p>${esc(ui.busy)}</p></div>`;
   else if (patron) html = patronScreen();
-  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, montage: montageScreen, end: endScreen, patron: endScreen }[view.phase]();
+  else html = { lobby: lobbyScreen, question: questionScreen, reveal: revealScreen, ranking: rankingScreen, wheel: wheelScreen, soundson: soundsOnScreen, montage: montageScreen, end: endScreen, patron: endScreen }[view.phase]();
   const banner = ui.status === 'lost' ? `<div class="banner">${T('lost')}</div>` : '';
   // Un champ du salon en cours de saisie (recherche, prénom) garde le curseur quand l'écran se redessine.
   const typing = document.activeElement?.dataset?.input;
@@ -439,8 +452,10 @@ function render() {
   if (inGame && view.phase === 'question') patchQuestion();
   if (ui.screen === 'game' && view.phase === 'ranking') animateBoard();
   if (ui.screen === 'game' && view.phase === 'wheel') spinWheel();
+  if (ui.screen === 'game' && view.phase === 'soundson') runSoundsOn();
   if (ui.screen === 'game' && view.phase === 'montage') runMontage();
   if (patron) startPatron();
+  syncMusic();
   if (ui.screen === 'game' && !patron && (view.phase === 'end' || view.phase === 'patron')) mountSlides();
   else { clearInterval(slideTimer); slideTimer = null; }
   tick();
@@ -637,7 +652,6 @@ function lobbyScreen() {
     <section class="card join-qr">
       <div class="qr" data-code="${esc(v.code)}">${qrSvg(inviteUrl(v.code))}</div>
       <p>${T('scanToJoin')}</p>
-      <p class="remote">${T('remoteFriends')} <button class="link" data-act="share">${T('sendLink')}</button></p>
     </section>` : ''}
 
     <h2>${T('whoAreYou')}</h2>
@@ -840,57 +854,138 @@ function confetti(parent) {
   }
 }
 
-// Montage de fin façon edit : les médias défilent en rythme sur la phonk, avec un effet par plan.
+// ——— Fin de partie en musique ———
+// La musique (js/music.js) part au même instant sur tous les téléphones : l'hôte a fixé l'heure de départ
+// (view.music.startAt, son horloge), chacun la convertit en temps audio. Les écrans suivent la même horloge :
+// passage au montage au début de la mesure 4, une photo par temps au drop.
+let music = null;   // { startAt, handle, mine }
+function syncMusic() {
+  const m = view?.phase === 'soundson' || view?.phase === 'montage' ? view.music : null;
+  if (!m || ui.screen !== 'game') {
+    if (music) { music.handle?.stop(0.3); music = null; }   // l'hôte a passé, ou c'est fini : fondu partout
+    return;
+  }
+  if (music?.startAt === m.startAt) {
+    // Une piste reprise d'un téléphone parti : bascule à la mesure suivante.
+    const key = m.mine.join() + m.solo;
+    if (music.handle && music.key !== key) {
+      const c = audioContext();
+      music.handle.setMine(m.mine, c.currentTime + (untilHost(m.startAt + m.from * BAR * 1000)) / 1000);
+      music.key = key;
+    }
+    return;
+  }
+  if (!audioRunning()) return;                       // son bloqué : bouton « Activer le son »
+  const c = audioContext();
+  const at = c.currentTime + untilHost(m.startAt) / 1000 - outputLatency();
+  music = { startAt: m.startAt, key: m.mine.join() + m.solo, handle: startMusic({ version: m.version, at, mine: m.mine, solo: m.solo }) };
+}
+
+const trackName = k => T('tracks')[k] || k;
+function soundsOnScreen() {
+  const m = view.music;
+  const mine = m.solo ? [`${STEM_ICONS.all} ${trackName('all')}`] : m.mine.map(k => `${STEM_ICONS[k]} ${trackName(k)}`);
+  return `
+    <div class="soundson">
+      <div class="speaker" data-pulse><span>🔊</span><i></i><i></i><i></i></div>
+      <h1>${T('soundsOn')}</h1>
+      <p class="hint">${T('soundsOnHint')}</p>
+      <p class="track">${T('yourTrack', mine.join(' · '))}</p>
+      ${audioRunning() ? '<p class="countdown" data-count></p>' : `<button class="primary big" data-act="enable-sound">${T('enableSound')}</button>`}
+    </div>
+    ${view.host ? `<button class="link edit-skip" data-act="skip">${T('skip')}</button>` : ''}`;
+}
+
+// Les ondes du haut-parleur battent la mesure ; « 4 3 2 1 » sur les 4 derniers temps avant le montage.
+function runSoundsOn() {
+  const m = view.music, box = $app.querySelector('[data-pulse]');
+  if (box) box.style.animationDelay = `${-(((hostNow() - m.startAt) % (BEAT * 1000)) + BEAT * 1000) % (BEAT * 1000)}ms`;
+  const count = $app.querySelector('[data-count]');
+  if (!count) return;
+  const montageAt = m.startAt + m.prepBars * BAR * 1000;
+  for (let n = 4; n >= 1; n--) {
+    const delay = untilHost(montageAt - n * BEAT * 1000);
+    if (delay < -BEAT * 1000) continue;
+    boardTimers.push(setTimeout(() => { count.textContent = n; count.classList.remove('tick'); void count.offsetWidth; count.classList.add('tick'); }, Math.max(0, delay)));
+  }
+}
+
+// Montage façon edit, calé sur la musique (spec : la meilleure photo tombe pile sur le drop).
+//   courte : drop des mesures 4 à 9, une photo par temps (la meilleure d'abord), un sticker tous les 4 temps ;
+//   longue : groove (mesures 4 à 7) avec les photos les moins bien classées, une tous les 2 temps, et les
+//   messages cultes s'il y en a ; montée (mesure 8) avec un zoom qui s'accélère ; drop des mesures 9 à 14.
+//   Dernière mesure : la meilleure photo floutée en fond, « Who is bro ? ».
 const CUTS = ['punch', 'shake', 'flash', 'glitch', 'noir', 'tilt', 'slide'];
-// Un cycle : photo, sticker, photo, sticker, puis un message qu'on a le temps de lire (durées en temps).
-const CYCLE = [['photo', 1], ['sticker', 1], ['photo', 1], ['sticker', 1], ['quote', 3]];
 
 function montageScreen() {
   return `<div class="edit"><div class="edit-frame" data-frame></div></div>
     ${view.host ? `<button class="link edit-skip" data-act="skip">${T('skip')}</button>` : ''}`;
 }
 
+function montagePlan(m, items, quotes) {
+  const photos = items.filter(x => x.kind === 'photo'), extras = items.filter(x => x.kind !== 'photo');
+  const ranked = photos.length ? photos : items;
+  const plan = [];   // { bar, beat, what }
+  const drop = firstDrop(m.version);
+  if (m.version === 'long') {
+    const low = ranked.slice().reverse();
+    for (let k = 0; k < 8; k++) {
+      const q = k % 2 && quotes.length ? quotes[(k >> 1) % quotes.length] : null;
+      plan.push({ bar: 3 + (k >> 1), beat: (k % 2) * 2, what: q ? { quote: q } : { media: low[k % low.length], fx: CUTS[k % CUTS.length] } });
+    }
+    plan.push({ bar: drop - 1, beat: 0, what: { media: low[7 % low.length] || ranked[0], fx: 'build' } });
+  }
+  let n = 0, e = 0;
+  for (let bar = drop; bar < m.bars - 1; bar++) {
+    for (let beat = 0; beat < 4; beat++) {
+      const k = (bar - drop) * 4 + beat;
+      const sticker = k % 4 === 3 && extras.length;
+      plan.push({ bar, beat, what: sticker ? { media: extras[e++ % extras.length], fx: 'punch', sticker: true } : { media: ranked[n++ % ranked.length], fx: k === 0 ? 'drop' : CUTS[k % CUTS.length] } });
+    }
+  }
+  plan.push({ bar: m.bars - 1, beat: 0, what: { outro: ranked[0] } });
+  return plan;
+}
+
 function runMontage() {
   const frame = $app.querySelector('[data-frame]');
   if (!frame) return;
-  const beat = 60000 / BPM, { items, quotes } = view.montage;
-  boardTimers.push({ stop: playPhonk(MONTAGE_MS / 1000) });
+  const m = view.music, { items, quotes } = view.montage;
   const show = (html, fx, cls = '') => {
     frame.className = `edit-frame ${cls}`;
     frame.innerHTML = html;
     void frame.offsetWidth;                   // relance l'animation même si l'effet est le même
     frame.classList.add(fx);
   };
-  const title = t => `<p class="edit-text big">${esc(t)}</p>`;
-  const media = m => {
-    const url = mediaCache.get(m.id);
-    return m.type === 'video' ? `<video src="${url}" autoplay loop muted playsinline></video>` : `<img src="${url}" alt="">`;
+  const media = x => {
+    const url = x && mediaCache.get(x.id);
+    if (!url) return '';
+    return x.type === 'video' ? `<video src="${url}" autoplay loop muted playsinline></video>` : `<img src="${url}" alt="">`;
   };
-  const seen = { photo: 0, sticker: 0, quote: 0 };
-  // Pioche dans les médias arrivés : la sorte demandée, sinon n'importe laquelle.
-  const nextMedia = want => {
-    const ready = items.filter(m => mediaCache.has(m.id));
-    const same = ready.filter(m => (want === 'photo') === (m.kind === 'photo'));
-    const pool = same.length ? same : ready;
-    return pool.length ? pool[seen[want]++ % pool.length] : null;
+  // Un média pas encore arrivé : le suivant de la même sorte qui l'est.
+  const ready = (x, sticker) => {
+    if (x && mediaCache.has(x.id)) return x;
+    return items.find(y => mediaCache.has(y.id) && (y.kind === 'photo') !== !!sticker) || items.find(y => mediaCache.has(y.id));
   };
-  show(title(T('montageIntro')), 'shake');
-  const end = MONTAGE_MS - beat * 4;
-  let at = beat * 4;
-  for (let n = 0; at < end; n++) {
-    const [want, beats] = CYCLE[n % CYCLE.length];
-    boardTimers.push(setTimeout(() => {
-      const fx = CUTS[Math.floor(Math.random() * CUTS.length)];
-      if (want === 'quote' && quotes.length) {
-        const q = quotes[seen.quote++ % quotes.length];
-        return show(`<div class="edit-quote"><p>${esc(q.text)}</p><small>${esc(q.author)}</small></div>`, 'punch');
-      }
-      const m = nextMedia(want === 'quote' ? 'photo' : want);
-      if (m) show(media(m), fx, m.kind === 'photo' ? '' : 'sticker');
-    }, at));
-    at += beats * beat;
+  const render = what => {
+    if (what.quote) return show(`<div class="edit-quote"><p>${esc(what.quote.text)}</p><small>${esc(what.quote.author)}</small></div>`, 'punch');
+    if (what.outro) {
+      const x = ready(what.outro);
+      return show(`${x ? `<div class="edit-bg" style="background-image:url('${mediaCache.get(x.id)}')"></div>` : ''}<p class="edit-text big">${esc(T('montageIntro'))}</p>`, 'fadeout');
+    }
+    const x = ready(what.media, what.sticker);
+    if (x) show(media(x), what.fx, what.sticker || x.kind !== 'photo' ? 'sticker' : '');
+  };
+  const plan = montagePlan(m, items, quotes);
+  const at = p => m.startAt + (p.bar * BAR + p.beat * BEAT) * 1000;
+  // Ce qui devrait déjà être à l'écran (arrivée en retard), puis la suite, à l'heure de l'hôte.
+  const current = plan.filter(p => untilHost(at(p)) <= 0).pop();
+  if (current) render(current.what);
+  else show(`<p class="edit-text big">${esc(T('montageIntro'))}</p>`, 'shake');
+  for (const p of plan) {
+    const delay = untilHost(at(p));
+    if (delay > 0) boardTimers.push(setTimeout(() => render(p.what), delay));
   }
-  boardTimers.push(setTimeout(() => show(title(T('montageEnd')), 'punch'), end));
 }
 
 let boardTimers = [];
@@ -1225,13 +1320,10 @@ $app.addEventListener('click', async e => {
     send({ t: act });
     if (act === 'start' && game?.phase === 'question') countGame();
   }
-  else if (act === 'share') {
-    // Invitation à distance : le partage du téléphone (WhatsApp, SMS…) avec un message tout prêt.
-    const text = T('inviteText', view.title), url = inviteUrl(view.code);
-    try {
-      if (navigator.share) await navigator.share({ title: 'Who is bro ?', text, url });
-      else { await navigator.clipboard.writeText(`${text} ${url}`); el.textContent = T('linkCopied'); }
-    } catch { /* partage annulé */ }
+  else if (act === 'enable-sound') {
+    unlockAudio();
+    // Le contexte audio démarre de façon asynchrone : on rejoint la musique en cours dès qu'il tourne.
+    setTimeout(() => { $app.dataset.key = ''; render(); }, 150);
   }
   else if (act === 'patron-later' || act === 'patron-continue') {
     ui.patron.dismissed = true;
